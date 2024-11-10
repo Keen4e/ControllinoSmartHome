@@ -16,7 +16,7 @@ unsigned long previousMillis = 0;
 const unsigned long interval = 2 * 60 * 1000;              
 const unsigned long reconnectInterval = 10 * 60 * 1000;    
 const unsigned long availabilityInterval = 1 * 60 * 1000;  
-byte mac[] = { 0xDE, 0xED, 0xED, 0xEF, 0xFE, 0xEF };       // Hier die MAC-Adresse deines Ethernet-Shields eintragen
+byte mac[] = { 0xDE, 0xED, 0xED, 0xEF, 0xFE, 0xEF };       
 IPAddress server(192, 168, 178, 42);                       
 const int mqtt_port = 1883;
 EthernetClient ethClient;
