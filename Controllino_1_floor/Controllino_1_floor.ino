@@ -5,22 +5,25 @@
 #include <ArduinoJson.h>
 #include <UniversalTimer.h>
 
-const char* clientId = "Controllino1";
-const char* reference = "C1";  // Dynamische Referenz, z.B. "C1" oder "C2"
+// Constants and Variables
+const char* clientId = "Controllino1";  //mqtt client name
+const char* reference = "C1";           // Dynamic reference, e.g., "C1" or "C2"
 String baseTopic_prefix = "aha/";
-String topicPrefix = baseTopic_prefix + reference + "/#";
+String topicHash = baseTopic_prefix + reference + "/#";  // Topic for MQTT subscriptions
 const char* unique_id_new;
 String base_topic = baseTopic_prefix + reference + "/";
-const char* state_suffix = "stat_t";
-const char* command_suffix = "cmd_t";
-const char* availability_suffix = "avt_t";
-String discoveryMessage;
+const char* state_suffix = "stat_t";        // MQTT topic suffix for state
+const char* command_suffix = "cmd_t";       // MQTT topic suffix for commands
+const char* availability_suffix = "avt_t";  // MQTT topic suffix for availability
+String discoveryMessage;                    // For storing MQTT discovery messages
 
-byte mac[] = { 0xDE, 0xEF, 0xED, 0xEF, 0xFE, 0xEF };  // Hier die MAC-Adresse deines Ethernet-Shields eintragen
-IPAddress server(192, 168, 178, 42);                  // IP-Adresse deines MQTT-Brokers
+// Network and Client Configuration
+byte mac[] = { 0xDE, 0xEF, 0xED, 0xEF, 0xFE, 0xEF };  // MAC address for the Ethernet shield
+IPAddress server(192, 168, 178, 42);                  // IP address of the MQTT broker
 const int mqtt_port = 1883;
 EthernetClient ethClient;
-PubSubClient client(ethClient);
+PubSubClient client(ethClient);  // MQTT client for publishing and subscribing
+// Pin Configuration for CONTROLLINO
 const int pins[] = {
   CONTROLLINO_D0, CONTROLLINO_D1, CONTROLLINO_D2, CONTROLLINO_D3,
   CONTROLLINO_D4, CONTROLLINO_D5, CONTROLLINO_D6, CONTROLLINO_D7,
@@ -34,10 +37,9 @@ const int pins[] = {
   CONTROLLINO_R12, CONTROLLINO_R13, CONTROLLINO_R14, CONTROLLINO_R15
 };
 const int numPins = sizeof(pins) / sizeof(pins[0]);
-bool previousStates[numPins];
-bool firstRun = true;
-int result = 1;   //Result for strength   0 = ok, 1 =NOK
-int result1 = 1;  //Result for angel error  0 for OK 1 for NOK
+bool previousStates[numPins];  // Stores previous states for pins
+bool firstRun = true;          // Flag for initial run of certain operations
+
 int previousSensorValue = LOW;
 const int numAnalogPins = 10;
 int currentActuatorState = LOW;  // Declare currentActuatorState globally
@@ -46,16 +48,16 @@ unsigned long time_now = 0;
 int analogStates[numAnalogPins];  // Array zum Speichern der vorherigen Zustände der A-Ports
 
 struct Rolladen {
-  int pin_up;
-  int pin_down;
-  unsigned long run_time;
-  int current_position;
-  String topic;
-  String name;
-  unsigned long start_time;  // Startzeit für die Bewegung
-  int target_position;       // Zielposition für die Bewegung
-  bool moving_up;            // Flag, ob der Rolladen nach oben bewegt wird
-  bool moving;               // Flag, ob der Rolladen gerade bewegt wird
+  int pin_up;                // Pin to move the shutter up
+  int pin_down;              // Pin to move the shutter down
+  unsigned long run_time;    // Duration for shutter to fully open/close
+  int current_position;      // Current position of the shutter
+  String topic;              // MQTT topic for this shutter
+  String name;               // Display name for this shutter
+  unsigned long start_time;  // Start time for movement
+  int target_position;       // Target position to reach
+  bool moving_up;            // Flag for moving up direction
+  bool moving;               // Movement status
 };
 Rolladen rolladen[NUM_ROLLADEN] = {
   // { CONTROLLINO_D9, CONTROLLINO_D10, 15000, 0, "aha/C1/rolladen/sz_tuer", "Rolladen SZ Tuer", 0, 0, false, false },
@@ -64,14 +66,14 @@ Rolladen rolladen[NUM_ROLLADEN] = {
 
 
 typedef struct {
-  const char* base_topic;
-  int pin;
-  void (*action)(int, int, const char*);
-  const char* name;
-  const char* unique_id;
-  const char* deviceIdentifier;
-  const char* deviceName;
-  bool defaultState;
+  const char* base_topic;                 // Base MQTT topic
+  int pin;                                // Pin number associated with the topic
+  void (*action)(int, int, const char*);  // Action to execute on state change
+  const char* name;                       // Display name for this mapping
+  const char* unique_id;                  // Unique identifier for MQTT discovery
+  const char* deviceIdentifier;           // Device identifier for MQTT
+  const char* deviceName;                 // Name of the device
+  bool defaultState;                      // Default state of the device (on/off)
 } TopicActionMapping;
 
 void digitalWriteAndPublish(int pin, bool state, const char* statusTopic) {
@@ -138,146 +140,7 @@ TopicActionMapping topicActions[] = {
 };
 
 
-void sendDiscoveryMessages() {
-  Serial.println("...sending discovery messages...");
-  // MQTT-Topic-Basis
-  const char* base_topic = "";
-  // Rolläden Discovery-Nachrichten
-  for (int i = 0; i < NUM_ROLLADEN; i++) {
-    // Erstellen der String-Variablen für die Topics
-    char state_topic[200];
-    char command_topic[200];
-    char availability_topic[200];
-    char discovery_topic[511];  // Größerer Puffer für Discovery-Topic
-    snprintf(state_topic, sizeof(state_topic), "%s%s/stat_t", base_topic, rolladen[i].topic.c_str());
-    snprintf(command_topic, sizeof(command_topic), "%s%s/cmd_t", base_topic, rolladen[i].topic.c_str());
-    snprintf(availability_topic, sizeof(availability_topic), "%s%s/avt_t", base_topic, rolladen[i].topic.c_str());
-    snprintf(discovery_topic, sizeof(discovery_topic), "%s%s/config", base_topic, rolladen[i].topic.c_str());
 
-    // JSON-Nachricht für Rolladen
-    char message[511];
-    snprintf(message, sizeof(message),
-             "{"
-             "\"name\": \"%s\", "
-             "\"unique_id\": \"C1/%s\", "
-             "\"state_topic\": \"%s\", "
-             "\"command_topic\": \"%s\", "
-             "\"availability_topic\": \"%s\", "
-             "\"payload_open\": \"OPEN\", "
-             "\"payload_close\": \"CLOSE\", "
-             "\"payload_stop\": \"STOP\", "
-             "\"position_open\": 100, "
-             "\"position_closed\": 0, "
-             "\"device\": {"
-             "\"identifiers\": \"%s\", "
-             "\"name\": \"%s\", "
-             "\"model\": \"Rolladen\", "
-             "\"manufacturer\": \"DIY\""
-             "}"
-             "}",
-             rolladen[i].name.c_str(),
-             rolladen[i].topic.c_str(),
-             state_topic,
-             command_topic,
-             availability_topic,
-             rolladen[i].topic.c_str(),
-             rolladen[i].name.c_str());
-
-    Serial.println(discovery_topic);
-    Serial.println(message);
-    bool result = client.publish(discovery_topic, message, true);
-
-    if (result) {
-      Serial.println("Message published successfully.");
-    } else {
-      Serial.println("Failed to publish message.");
-    }
-  }
-
-  base_topic = "aha/";
-
-  // Geräte Discovery-Nachrichten für andere Geräte
-  for (int i = 0; i < sizeof(topicActions) / sizeof(TopicActionMapping); i++) {
-    const TopicActionMapping* action = &topicActions[i];
-    // Ableitung der Topics
-    char state_topic[200];
-    char command_topic[200];
-    char availability_topic[200];
-    char discovery_topic[250];
-    char payload[511];
-
-    snprintf(state_topic, sizeof(state_topic), "%s%s/%s", base_topic, action->unique_id, state_suffix);
-    snprintf(command_topic, sizeof(command_topic), "%s%s/%s", base_topic, action->unique_id, command_suffix);
-    snprintf(availability_topic, sizeof(availability_topic), "%s%s/%s", base_topic, action->unique_id, availability_suffix);
-    snprintf(discovery_topic, sizeof(discovery_topic), "homeassistant/switch/%s/config", action->unique_id);
-
-    snprintf(payload, sizeof(payload),
-             "{"
-             "\"name\": \"%s\", "
-             "\"state_topic\": \"%s\", "
-             "\"command_topic\": \"%s\", "
-             "\"availability_topic\": \"%s\", "
-             "\"payload_on\": \"ON\", "
-             "\"payload_off\": \"OFF\", "
-             "\"device_class\": \"switch\", "
-             "\"unique_id\": \"%s\", "
-             "\"device\": {"
-             "\"identifiers\": \"%s\", "
-             "\"name\": \"%s\""
-             "}"
-             "}",
-             action->name, state_topic, command_topic, availability_topic, action->unique_id,
-             action->deviceIdentifier, action->deviceName);
-
-    Serial.println(discovery_topic);
-    Serial.println(payload);
-    bool result = client.publish(discovery_topic, payload, true);
-    if (result) {
-      Serial.println("Message published successfully.");
-    } else {
-      Serial.println("Failed to publish message.");
-    }
-  }
-
-  // Geräte Discovery-Nachrichten für A1 bis A10
-  for (int i = 1; i <= 10; i++) {
-    char state_topic[200];
-    char command_topic[200];
-    char availability_topic[200];
-    char discovery_topic[250];
-    char payload[511];
-
-    snprintf(state_topic, sizeof(state_topic), "%sA%d/stat_t", base_topic, i);
-    snprintf(command_topic, sizeof(command_topic), "%sA%d/cmd_t", base_topic, i);
-    snprintf(availability_topic, sizeof(availability_topic), "%sA%d/avt_t", base_topic, i);
-    snprintf(discovery_topic, sizeof(discovery_topic), "homeassistant/sensor/C1_A%d/config", i);
-
-    snprintf(payload, sizeof(payload),
-             "{"
-             "\"name\": \"Analog Input A%d\", "
-             "\"state_topic\": \"%s\", "
-             "\"command_topic\": \"%s\", "
-             "\"availability_topic\": \"%s\", "
-             "\"unique_id\": \"C1_A%d\", "
-             "\"device\": {"
-             "\"identifiers\": \"C1_A%d\", "
-             "\"name\": \"Analog Port A%d\", "
-             "\"model\": \"Analog Sensor\", "
-             "\"manufacturer\": \"DIY\""
-             "}"
-             "}",
-             i, state_topic, command_topic, availability_topic, i, i, i);
-
-    Serial.println(discovery_topic);
-    Serial.println(payload);
-    bool result = client.publish(discovery_topic, payload, true);
-    if (result) {
-      Serial.println("Message published successfully for A Port.");
-    } else {
-      Serial.println("Failed to publish message for A Port.");
-    }
-  }
-}
 
 // Function to read and print analog values for pins A0 to A15
 void readAnalogValues() {
