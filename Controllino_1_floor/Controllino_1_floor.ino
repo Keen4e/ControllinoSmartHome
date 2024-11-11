@@ -139,9 +139,6 @@ TopicActionMapping topicActions[] = {
 
 };
 
-
-
-
 // Function to read and print analog values for pins A0 to A15
 void readAnalogValues() {
   for (int i = 0; i <= 15; i++) {
