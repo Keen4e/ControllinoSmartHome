@@ -131,12 +131,6 @@ TopicActionMapping topicActions[] = {
   { "aha/C1/C1_A11", CONTROLLINO_A11, digitalWriteAndPublish, "A11 - Buero Licht", "C1/C1_A11", "C1_Eingänge", "C1_Eingänge", false },
   { "aha/C1/C1_A14", CONTROLLINO_A14, digitalWriteAndPublish, "A14 - Buero Rolladen hoch", "C1/C1_A14", "C1_Eingänge", "C1_Eingänge", false },
   { "aha/C1/C1_A15", CONTROLLINO_A15, digitalWriteAndPublish, "A15 - Buero Rolladen runter", "C1/C1_A15", "C1_Eingänge", "C1_Eingänge", false }
-
-
-
-
-
-
 };
 
 // Function to read and print analog values for pins A0 to A15
@@ -149,52 +143,48 @@ void readAnalogValues() {
 
     // Schalt- und Statusmeldungen für bestimmte digitale Ausgänge senden
     switch (i) {
-      case 0:
-        handleButtonPress(buttonPin, CONTROLLINO_D0, "aha/C1/C1_D0/stat_t");
-        break;
-      case 1:
-        handleButtonPress(buttonPin, CONTROLLINO_D1, "aha/C1/C1_D0/stat_t");
-        break;
-      case 2:  //Flur Licht
-        handleButtonPress(buttonPin, CONTROLLINO_R8, "aha/C1/C1_R8/stat_t");
-        break;
-      case 3:
+      case 0://A0 - Schrank re
         handleButtonPress(buttonPin, CONTROLLINO_D3, "aha/C1/C1_D3/stat_t");
         break;
-      case 4:
+      case 1://A1 - Schrank li
+        handleButtonPress(buttonPin, CONTROLLINO_D3, "aha/C1/C1_D3/stat_t");
+        break;
+      case 2: //A2 - Bad Spiegel
+        handleButtonPress(buttonPin, CONTROLLINO_R8, "aha/C1/C1_R8/stat_t");
+        break;
+      case 3://A3 - Schlafzimmer Deckenlicht
+        handleButtonPress(buttonPin, CONTROLLINO_D3, "aha/C1/C1_D3/stat_t");
+        break;
+      case 4://A4 - Schlafzimmer li
         handleButtonPress(buttonPin, CONTROLLINO_D4, "aha/C1/C1_D4/stat_t");
         break;
-      case 5:
-        handleButtonPress(buttonPin, CONTROLLINO_D9, "aha/C1/C1_D5/stat_t");
-        handleButtonPress(buttonPin, CONTROLLINO_D18, "aha/C1/C1_D10/stat_t");
-        break;
+      case 5://A5 - Schlafzimmer re//A5 - Schlafzimmer re
+        handleButtonPress(buttonPin, CONTROLLINO_D5, "aha/C1/C1_D5/stat_t");
+           break;
       case 6:  //Bad Licht
         handleButtonPress(buttonPin, CONTROLLINO_D19, "aha/C1/C1_D19/stat_t");
         break;
-      case 7:
-        handleButtonPress(buttonPin, CONTROLLINO_D10, "aha/C1/C1_D7/stat_t");
-        handleButtonPress(buttonPin, CONTROLLINO_D17, "aha/C1/C1_D9/stat_t");
+      case 7://A7 - Rolladen rechts hoch
+        handleButtonPress(buttonPin, CONTROLLINO_D9, "aha/C1/C1_D9/stat_t");
+           break;
+      case 8://A8 - Rolladen rechts runter
+        handleButtonPress(buttonPin, CONTROLLINO_D10, "aha/C1/C1_D10/stat_t");
         break;
-      case 8:
-        handleButtonPress(buttonPin, CONTROLLINO_D10, "aha/C1/C1_D8/stat_t");
-        break;
-      case 9:
-        //  handleButtonPress(buttonPin, CONTROLLINO_D17, CONTROLLINO_D17, "aha/C1/C1_D9/stat_t", "aha/C1/C1_D9/stat_t");
-        break;
-      case 10:
-        // handleButtonPress(buttonPin, CONTROLLINO_D18, CONTROLLINO_D18, "aha/C1/C1_D10/stat_t", "aha/C1/C1_D10/stat_t");
-        break;
-      case 11:
+      case 9://A9 - Rolladen links hoch
+        handleButtonPress(buttonPin, CONTROLLINO_D17, "aha/C1/C1_D17/stat_t");
+           break;
+      case 10://A10 - Rolladen links runter
+      handleButtonPress(buttonPin, CONTROLLINO_D18, "aha/C1/C1_D18/stat_t");
+          break;
+      case 11://A11 - Buero Licht
         handleButtonPress(buttonPin, CONTROLLINO_D12, "aha/C1/C1_D12/stat_t");
         break;
-      case 12:
-        handleButtonPress(buttonPin, CONTROLLINO_D11, "aha/C1/C1_D11/stat_t");
+      
+      case 14://A14 - Buero Rolladen hoch
+        handleButtonPress(buttonPin, CONTROLLINO_D7, "aha/C1/C1_D7/stat_t");
         break;
-      case 14:
-        handleButtonPress(buttonPin, CONTROLLINO_D17, "aha/C1/C1_D17/stat_t");
-        break;
-      case 15:
-        handleButtonPress(buttonPin, CONTROLLINO_D18, "aha/C1/C1_D18/stat_t");
+      case 15://A15 - Buero Rolladen runter
+        handleButtonPress(buttonPin, CONTROLLINO_D8, "aha/C1/C1_D8/stat_t");
         break;
         // Add more cases as needed
     }
