@@ -39,6 +39,9 @@ int* previousOutputValues = nullptr;
 bool lastInputStates[ANALOG_INPUTS_COUNT] = {false};
 bool outputStates[ANALOG_INPUTS_COUNT] = {false};
 const unsigned long DEBOUNCE_DELAY = 25;  // 50ms Entprellzeit
+unsigned long pressStartTime[ANALOG_INPUTS_COUNT] = { 0 };  // Speichert den Zeitpunkt, an dem ein Tastendruck beginnt
+bool buttonPressInProgress[ANALOG_INPUTS_COUNT] = { false }; // Zeigt an, ob ein Tastendruck gerade läuft
+const unsigned long LONG_PRESS_THRESHOLD = 3000; // 3 Sekunden in Millisekunden
 
 // Zusätzliche Array für Entprellung
 unsigned long lastDebounceTime[ANALOG_INPUTS_COUNT] = {0};
@@ -623,71 +626,78 @@ void monitorOutputs() {
 }
 
 void mapInputsToOutputs() {
-    // Zuerst Sperrlogik prüfen
-    
+  for (uint8_t i = 0; i < ANALOG_INPUTS_COUNT; i++) {
+    int reading = digitalRead(getPinFromString(ANALOG_INPUTS[i].pin));
 
-    for (uint8_t i = 0; i < ANALOG_INPUTS_COUNT; i++) {
-        int reading = digitalRead(getPinFromString(ANALOG_INPUTS[i].pin));
-        
-        // Entprellungslogik
-        if (reading != previousInputValues[i]) {
-            lastDebounceTime[i] = millis();
-        }
-
-        // Prüfe, ob Entprellungszeit überschritten
-        if ((millis() - lastDebounceTime[i]) > DEBOUNCE_DELAY) {
-            // Zustandsänderung prüfen
-            if (reading != inputStates[i]) {
-                inputStates[i] = reading;
-
-                // Nur bei Tastendruck (LOW) reagieren
-                if (inputStates[i] == LOW) {
-                    // Ausgänge für diesen Eingang durchgehen
-           if (ANALOG_INPUTS[i].outputs_count > 0) {
-                        for (uint8_t j = 0; j < ANALOG_INPUTS[i].outputs_count; j++) {
-                            const char* outputPinStr = ANALOG_INPUTS[i].outputs[j].pin;
-                            int outputPin = getPinFromString(outputPinStr);
-                            
-                            // Remove this locking check:
-                            // Prüfe, ob der Ausgang gesperrt ist
-                            // bool isLocked = false;
-                            // for (uint8_t k = 0; k < DIGITAL_OUTPUTS_COUNT; k++) {
-                            //     if (strcmp(DIGITAL_OUTPUTS[k].pin, outputPinStr) == 0 && outputLocked[k]) {
-                            //         isLocked = true;
-                            //         break;
-                            //     }
-                            // }
-                            
-                            // Remove this condition:
-                            // Nur schalten, wenn nicht gesperrt
-                            // if (!isLocked) {
-                                
-                            // Toggle Ausgangszustand
-                            outputStates[i] = !outputStates[i];
-                            
-                            // Pin schalten
-                            digitalWrite(outputPin, outputStates[i] ? HIGH : LOW);
-                            
-                            // MQTT-Nachricht senden
-                            String topicStr = String(ANALOG_INPUTS[i].mqtt_topic);
-                            int slashIndex = topicStr.indexOf('/');
-                            String baseTopic = "aha/" + topicStr.substring(0, slashIndex);
-                            String fullTopicPart = topicStr.substring(slashIndex + 1);
-                            String stateTopic = baseTopic + "/" + fullTopicPart + "/" + state_suffix;
-                            
-                            const char* statePayload = outputStates[i] ? "ON" : "OFF";
-                            client.publish(stateTopic.c_str(), statePayload);
-                            // Remove closing bracket from removed condition
-                            // }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Letzten Zustand aktualisieren
-        previousInputValues[i] = reading;
+    // Entprellungslogik
+    if (reading != previousInputValues[i]) {
+      lastDebounceTime[i] = millis();
     }
+
+    // Prüfe, ob Entprellungszeit überschritten
+    if ((millis() - lastDebounceTime[i]) > DEBOUNCE_DELAY) {
+      // Zustandsänderung prüfen
+      if (reading != inputStates[i]) {
+        inputStates[i] = reading;
+
+        // Wenn Taste gedrückt wird (LOW)
+        if (inputStates[i] == LOW) {
+          // Startzeit des Tastendrucks speichern und Tastendruck als aktiv markieren
+          pressStartTime[i] = millis();
+          buttonPressInProgress[i] = true;
+          
+          Serial.print("Button press started on input ");
+          Serial.println(i);
+        }
+        // Wenn Taste losgelassen wird (HIGH) und ein Tastendruck aktiv war
+        else if (inputStates[i] == HIGH && buttonPressInProgress[i]) {
+          // Dauer des Tastendrucks berechnen
+          unsigned long pressDuration = millis() - pressStartTime[i];
+          buttonPressInProgress[i] = false;
+          
+          Serial.print("Button released on input ");
+          Serial.print(i);
+          Serial.print(", press duration: ");
+          Serial.print(pressDuration);
+          Serial.println(" ms");
+
+          // Überprüfen, ob es ein kurzer Tastendruck war (unter 3 Sekunden)
+          if (pressDuration < LONG_PRESS_THRESHOLD) {
+            Serial.println("Short press detected - processing action");
+            
+            // Ausgänge für diesen Eingang durchgehen
+            if (ANALOG_INPUTS[i].outputs_count > 0) {
+              for (uint8_t j = 0; j < ANALOG_INPUTS[i].outputs_count; j++) {
+                const char* outputPinStr = ANALOG_INPUTS[i].outputs[j].pin;
+                int outputPin = getPinFromString(outputPinStr);
+
+                // Toggle Ausgangszustand
+                outputStates[i] = !outputStates[i];
+
+                // Pin schalten
+                digitalWrite(outputPin, outputStates[i] ? HIGH : LOW);
+
+                // MQTT-Nachricht senden
+                String topicStr = String(ANALOG_INPUTS[i].mqtt_topic);
+                int slashIndex = topicStr.indexOf('/');
+                String baseTopic = "aha/" + topicStr.substring(0, slashIndex);
+                String fullTopicPart = topicStr.substring(slashIndex + 1);
+                String stateTopic = baseTopic + "/" + fullTopicPart + "/" + state_suffix;
+
+                const char* statePayload = outputStates[i] ? "ON" : "OFF";
+                client.publish(stateTopic.c_str(), statePayload);
+              }
+            }
+          } else {
+            Serial.println("Long press detected - ignoring action");
+          }
+        }
+      }
+    }
+
+    // Letzten Zustand aktualisieren
+    previousInputValues[i] = reading;
+  }
 }
 
 
