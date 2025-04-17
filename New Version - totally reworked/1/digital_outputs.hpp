@@ -83,8 +83,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1/C1_D7",
         "C1_Buero",
         false,
-        {"CONTROLLINO_D8"},
-        1
+        {nullptr},
+        0
     },
     {
         "CONTROLLINO_D8",
@@ -92,8 +92,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1/C1_D8",
         "C1_Buero",
         false,
-        {"CONTROLLINO_D7"},
-        1
+        {nullptr},
+        0
     },
     {
         "CONTROLLINO_D9",
@@ -101,8 +101,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1/C1_D9",
         "C1_Schlafzimmer",
         false,
-        {"CONTROLLINO_D10"},
-        1
+        {nullptr},
+        0
     },
     {
         "CONTROLLINO_D10",
@@ -110,8 +110,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1/C1_D10",
         "C1_Schlafzimmer",
         false,
-        {"CONTROLLINO_D9"},
-        1
+        {nullptr},
+        0
     },
     {
         "CONTROLLINO_D11",
@@ -173,8 +173,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1/C1_D17",
         "C1_Schlafzimmer",
         false,
-        {"CONTROLLINO_D18"},
-        1
+        {nullptr},
+        0
     },
     {
         "CONTROLLINO_D18",
@@ -182,8 +182,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1/C1_D18",
         "C1_Schlafzimmer",
         false,
-        {"CONTROLLINO_D17"},
-        1
+        {nullptr},
+        0
     },
     {
         "CONTROLLINO_D19",
