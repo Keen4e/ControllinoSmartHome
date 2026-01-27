@@ -9,8 +9,9 @@ struct DigitalOutput {
     const char* mqtt_topic;
     const char* mqtt_device;
     bool initial_state;
-    const char* exclusive_ports[2]; // Maximale Größe 2 für Kompatibilität
-    uint8_t exclusive_ports_count;
+    const char* outputs[5];
+    uint8_t outputs_count;
+    const char* device_class;  // Neuer Parameter: "light" oder "switch"
 };
 
 const DigitalOutput DIGITAL_OUTPUTS[] = {
@@ -21,7 +22,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Kueche",
         true,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D1",
@@ -30,7 +32,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Kueche",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D2",
@@ -39,7 +42,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Kueche",
         true,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D3",
@@ -48,36 +52,40 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Kueche",
         true,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D4",
-        "Esszimmer Rolladen hoch",
+        "Esszimmer Rolladen runter",
         "C2/C2_D4",
         "C2_Esszimmer",
         false,
        // {nullptr},
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D5",
-        "Esszimmer Rolladen runter",
+        "Esszimmer Rolladen hoch",
         "C2/C2_D5",
         "C2_Esszimmer",
         false,
        // {nullptr},
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D6",
-        "Kueche Steckdose bei Rolladen (todo)",
+        "Esszimmer Steckdose bei Rolladen",
         "C2/C2_D6",
         "C2_Kueche",
         true,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D7",
@@ -87,7 +95,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         false,
       //  {nullptr},
         {"CONTROLLINO_D8"},
-        1
+        1,
+        "switch"
     },
     {
         "CONTROLLINO_D8",
@@ -97,16 +106,18 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         false,
         //{nullptr},
         {"CONTROLLINO_D7"},
-        1
+        1,
+        "switch"
     },
     {
         "CONTROLLINO_D9",
-        "Esszimmer Steckdose Rolladen",
+        "Kueche Steckdose Rolladen",
         "C2/C2_D9",
         "C2_Esszimmer",
         true,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D10",
@@ -115,7 +126,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Klo",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D11",
@@ -124,16 +136,18 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Esszimmer",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D12",
-        "D12 tbd",
+        "Flur Deckenlicht",
         "C2/C2_D12",
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D13",
@@ -142,26 +156,11 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_out",
         true,
         {nullptr},
-        0
+        0,
+        "switch"
     },
-    {
-        "CONTROLLINO_D14",
-        "Flur Licht",
-        "C2/C2_D14",
-        "C2_Flur",
-        false,
-        {nullptr},
-        0
-    },
-    {
-        "CONTROLLINO_D15",
-        "Flur Garderobe",
-        "C2/C2_D15",
-        "C2_Flur",
-        false,
-        {nullptr},
-        0
-    },
+   
+
     {
         "CONTROLLINO_D16",
         "Fire Tablet",
@@ -169,34 +168,38 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D17",
-        "Flur Treppe oben 1",
+        "Flur Treppe Mitte 1",
         "C2/C2_D17",
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D18",
-        "Flur Treppe oben 2",
+        "Flur Treppe Mitte 2",
         "C2/C2_D18",
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D19",
-        "Flur Treppe oben 3",
+        "Flur Treppe Mitte 3",
         "C2/C2_D19",
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D20",
@@ -205,7 +208,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D21",
@@ -214,26 +218,11 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
-    {
-        "CONTROLLINO_D22",
-        "Flur Treppe mitte 2",
-        "C2/C2_D22",
-        "C2_Flur",
-        false,
-        {nullptr},
-        0
-    },
-    {
-        "CONTROLLINO_D23",
-        "Flur Treppe mitte 3",
-        "C2/C2_D23",
-        "C2_Flur",
-        false,
-        {nullptr},
-        0
-    },
+
+
     {
         "CONTROLLINO_R0",
         "Weinregal",
@@ -241,7 +230,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_R1",
@@ -250,17 +240,10 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
-    {
-        "CONTROLLINO_R2",
-        "Flur Treppe unten 3",
-        "C2/C2_R2",
-        "C2_Flur",
-        false,
-        {nullptr},
-        0
-    },
+
     {
         "CONTROLLINO_R3",
         "Flur Treppenhaus",
@@ -268,17 +251,10 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
-    {
-        "CONTROLLINO_R4",
-        "R4 tbd",
-        "C2/C2_R4",
-        "C2_tbd",
-        false,
-        {nullptr},
-        0
-    },
+
     {
         "CONTROLLINO_R5",
         "Eszzimmer Steckdose altes Licht",
@@ -286,26 +262,10 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Esszimmer",
         true,
         {nullptr},
-        0
+        0,
+        "switch"
     },
-    {
-        "CONTROLLINO_R6",
-        "R6 tbd",
-        "C2/C2_R6",
-        "C2_tbd",
-        false,
-        {nullptr},
-        0
-    },
-    {
-        "CONTROLLINO_R7",
-        "R7 tbd",
-        "C2/C2_R7",
-        "C2_tbd",
-        false,
-        {nullptr},
-        0
-    },
+  
     {
         "CONTROLLINO_R8",
         "Werkzeugkeller",
@@ -313,7 +273,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Werkzeugkeller",
         false,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_R9",
@@ -322,7 +283,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_R10",
@@ -331,7 +293,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_R11",
@@ -340,7 +303,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_R12",
@@ -349,34 +313,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C2_Hobbyraum",
         false,
         {nullptr},
-        0
-    },
-    {
-        "CONTROLLINO_R13",
-        "R13 tbd",
-        "C2/C2_R13",
-        "C2_tbd",
-        false,
-        {nullptr},
-        0
-    },
-    {
-        "CONTROLLINO_R14",
-        "R14 tbd",
-        "C2/C2_R14",
-        "C2_tbd",
-        false,
-        {nullptr},
-        0
-    },
-    {
-        "CONTROLLINO_R15",
-        "R15 tbd",
-        "C2/C2_R15",
-        "C2_tbd",
-        false,
-        {nullptr},
-        0
+        0,
+        "switch"
     }
 };
 

@@ -20,38 +20,38 @@ struct AnalogInput {
 const AnalogInput ANALOG_INPUTS[] = {
     {
         "CONTROLLINO_A1",
-        "A1 - Rollo Kueche hoch",
+        "A1 - Rollo Esszimmer hoch",
         "C2/C2_A1",
         "C2_Eingänge",
-        "sensor",
-        {{"CONTROLLINO_D5"}},
+        "power",
+        {{""}},
         1
     },
     {
         "CONTROLLINO_A2",
-        "A2 - Rollo Kueche runter",
+        "A2 - Rollo Esszimmer runter",
         "C2/C2_A2",
         "C2_Eingänge",
-        "sensor",
-        {{"CONTROLLINO_D4"}},
+        "power",
+        {{""}},
         1
     },
     {
         "CONTROLLINO_A3",
-        "A3 - Roll Esszimmer runter",
+        "A3 - Rollo Kueche hoch",
         "C2/C2_A3",
         "C2_Eingänge",
-        "sensor",
-        {{"CONTROLLINO_D7"}},
+        "power",
+        {{""}},
         1
     },
     {
         "CONTROLLINO_A4",
-        "A4 - Rollo Esszimmer hoch",
+        "A4 - Rollo Kueche runter",
         "C2/C2_A4",
         "C2_Eingänge",
-        "sensor",
-        {{"CONTROLLINO_D8"}},
+        "power",
+        {{""}},
         1
     },
     {
@@ -59,8 +59,8 @@ const AnalogInput ANALOG_INPUTS[] = {
         "A5 - Schalter Waeschekeller",
         "C2/C2_A5",
         "C2_Eingänge",
-        "sensor",
-        {{"CONTROLLINO_R1"}, {"CONTROLLINO_D21"}},
+        "power",
+        {{"CONTROLLINO_D21"},{"CONTROLLINO_R1"}},
         2
     },
     {
@@ -68,17 +68,17 @@ const AnalogInput ANALOG_INPUTS[] = {
         "A6 - Schalter Hobbyraum",
         "C2/C2_A6",
         "C2_Eingänge",
-        "sensor",
+        "power",
         {{"CONTROLLINO_R0"}},
         1
     },
     {
         "CONTROLLINO_A7",
-        "A7 - Schalter Wohnzimmer",
+        "A7 - Schalter Wohnzimmer Flur Unten",
         "C2/C2_A7",
         "C2_Eingänge",
-        "sensor",
-        {{"CONTROLLINO_D20"}},
+        "power",
+         {{"CONTROLLINO_R1"}},
         1
     },
     {
@@ -86,7 +86,7 @@ const AnalogInput ANALOG_INPUTS[] = {
         "A8 - Flur alter 3er re",
         "C2/C2_A8",
         "C2_Eingänge",
-        "sensor",
+        "power",
         {{"CONTROLLINO_D12"}},
         1
     },
@@ -95,7 +95,7 @@ const AnalogInput ANALOG_INPUTS[] = {
         "A9 - Flur alter 3er li",
         "C2/C2_A9",
         "C2_Eingänge",
-        "sensor",
+        "power",
         {{"CONTROLLINO_D11"}},
         1
     },
@@ -104,7 +104,7 @@ const AnalogInput ANALOG_INPUTS[] = {
         "A10 - Schalter Haustuer",
         "C2/C2_A10",
         "C2_Eingänge",
-        "sensor",
+        "power",
         {{"CONTROLLINO_D12"}},
         1
     },
@@ -113,7 +113,7 @@ const AnalogInput ANALOG_INPUTS[] = {
         "A11 - Schalter WC",
         "C2/C2_A11",
         "C2_Eingänge",
-        "sensor",
+        "power",
         {{"CONTROLLINO_D10"}},
         1
     },
@@ -122,8 +122,17 @@ const AnalogInput ANALOG_INPUTS[] = {
         "A12 - Schalter Kueche",
         "C2/C2_A12",
         "C2_Eingänge",
-        "sensor",
+        "power",
         {{"CONTROLLINO_D1"}},
+        1
+    },
+        {
+        "CONTROLLINO_A13",
+        "A13 - Schalter Keller Wohnzimmer oben",
+        "C2/C2_A13",
+        "C2_Eingänge",
+        "power",
+        {{"CONTROLLINO_R3"}},
         1
     }
 };
