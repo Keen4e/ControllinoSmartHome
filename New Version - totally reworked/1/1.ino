@@ -1,10 +1,17 @@
+//19062025
+#define MQTT_MAX_PACKET_SIZE 512
+#define MQTT_KEEPALIVE 60
+
 #include <Arduino.h>
 #include <SPI.h>
 #include <Ethernet.h>
-
 #include <PubSubClient.h>
 #include <Controllino.h>
 #include <ArduinoJson.h>
+
+// Ensure proper character encoding
+#define ARDUINOJSON_USE_LONG_LONG 1
+#define ARDUINOJSON_ENABLE_ARDUINO_STRING 1
 
 #include "config.hpp"           // Neue Konfiguration
 #include "digital_outputs.hpp"  // Digitale Ausgänge
@@ -15,23 +22,32 @@
 #if DEBUG
 #define DEBUG_PRINT(x) Serial.print(x)
 #define DEBUG_PRINTLN(x) Serial.println(x)
-#define DEBUG_TIMESTAMP() do { \
-  unsigned long ms = millis(); \
-  Serial.print(ms/1000); \
-  Serial.print('.'); \
-  Serial.print(ms%1000); \
-  Serial.print(": "); \
-} while (0)
-#define DEBUG_MSG(msg) do { DEBUG_TIMESTAMP(); Serial.println(F(msg)); } while (0)
 #else
 #define DEBUG_PRINT(x)
 #define DEBUG_PRINTLN(x)
-#define DEBUG_TIMESTAMP()
-#define DEBUG_MSG(msg)
 #endif
 
 EthernetClient ethClient;
 PubSubClient client(ethClient);
+
+// Am Anfang der Datei, nach den includes
+// Reduzierte und optimierte Buffer-Größen
+#define DISCOVERY_TOPIC_SIZE 128    // war 160
+#define DISCOVERY_PAYLOAD_SIZE 384  // war 768
+#define JSON_DOC_SIZE 256          // war 512
+#define BASE_PART_SIZE 32          // war 64
+#define FULL_PART_SIZE 64          // war 128
+
+// Statische Buffer statt Stack-Allocation
+static char discoveryTopic[DISCOVERY_TOPIC_SIZE];
+static char stateTopic[DISCOVERY_TOPIC_SIZE];
+static char commandTopic[DISCOVERY_TOPIC_SIZE];
+static char availabilityTopic[DISCOVERY_TOPIC_SIZE];
+static char basePart[BASE_PART_SIZE];
+static char fullPart[FULL_PART_SIZE];
+static char discoveryPayloadBuf[DISCOVERY_PAYLOAD_SIZE];
+static StaticJsonDocument<JSON_DOC_SIZE> doc;
+
 
 // Globale Variablen
 const char* state_suffix = SYSTEM_CONFIG.mqtt.state_suffix;
@@ -42,31 +58,16 @@ unsigned long lastReconnectAttempt = 0;
 const unsigned long RECONNECT_INTERVAL = 5000;  // 5 Sekunden
 bool mqttConnectionStatus = false;
 
-// Dynamische Arrays zur Überwachung der Zustände
-int* previousInputValues = nullptr;
-int* previousOutputValues = nullptr;
+// Statische Arrays (verhindert Heap‑Fragmentierung)
+static int previousInputValues[ANALOG_INPUTS_COUNT];
+static int previousOutputValues[DIGITAL_OUTPUTS_COUNT];
 bool lastInputStates[ANALOG_INPUTS_COUNT] = { false };
 bool outputStates[ANALOG_INPUTS_COUNT] = { false };
-const unsigned long DEBOUNCE_DELAY = 25;  // 50ms Entprellzeit
-unsigned long pressStartTime[ANALOG_INPUTS_COUNT] = { 0 };  // Speichert den Zeitpunkt, an dem ein Tastendruck beginnt
-bool buttonPressInProgress[ANALOG_INPUTS_COUNT] = { false }; // Zeigt an, ob ein Tastendruck gerade läuft
-const unsigned long LONG_PRESS_THRESHOLD = 3000; // 3 Sekunden in Millisekunden
+const unsigned long DEBOUNCE_DELAY = 50;  // 50ms Entprellzeit
 
 // Zusätzliche Array für Entprellung
 unsigned long lastDebounceTime[ANALOG_INPUTS_COUNT] = { 0 };
 int inputStates[ANALOG_INPUTS_COUNT] = { HIGH };
-
-// Neue globale Variable für den letzten erkannten langen Tastendruck
-bool wasLongPress[ANALOG_INPUTS_COUNT] = { false };
-
-struct InputState {
-  bool isPressed;
-  bool wasLongPress;
-  unsigned long pressStartTime;
-  unsigned long lastToggleTime;
-  unsigned long lastDebounceTime;
-};
-
 
 // Funktionsdeklarationen
 void reconnect();
@@ -78,39 +79,26 @@ void sendStateMessage(const char* mqtt_topic, const char* state_suffix, int valu
 void sendInitialStateMessages();
 void sendDiscoveryMessages();
 int getPinFromString(const char* pinName);
-int extractPinFromTopic(const char* topic);
+
 void sendAvailabilityMessages();
-bool publishWithRetry(const char* topic, const char* payload, int retries = 3) {
-  while (retries > 0) {
-    if (client.publish(topic, payload)) return true;
-    retries--;
-    delay(20);
-  }
-  if (DEBUG) {
-    Serial.print(F("Failed to publish to "));
-    Serial.println(topic);
-  }
-  return false;
-}
+bool publishWithRetry(const char* topic, const char* payload, bool retained = false);  // Neue Deklaration
+void hexdump(const char* data);  // Neue Deklaration
 
 // Hilfsfunktion zum Konvertieren von Pin-Namen zu Pin-Nummern
 // Verbesserte Funktion für das Mapping von Pin-Strings zu Controllino Pins
 
-// Update the setup function to properly initialize outputStates to match physical state
 void setup() {
   Serial.begin(115200);
-  delay(300);
-  Serial.println("***********************************************************");
-  Serial.println("                   CONTROLLINO                            ");
-  Serial.println("              ....starting up.....");
-  Serial.println("***********************************************************");
+  delay(10);
+  
+
+Serial.println("*                   .... 04 01 2026.....                *");
   // Netzwerk und MQTT initialisieren
   byte mac[6];
   if (sscanf(SYSTEM_CONFIG.network.mac_address,
              "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
              &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5])
       != 6) {
-    DEBUG_PRINTLN("Ungültige MAC-Adresse");
     return;
   }
 
@@ -135,138 +123,86 @@ void setup() {
   }
 
   // Initialisiere globale Zustandsvariablen
-  previousInputValues = new int[ANALOG_INPUTS_COUNT];
-  previousOutputValues = new int[DIGITAL_OUTPUTS_COUNT];
+  // previousInputValues / previousOutputValues sind statisch deklariert;
+  // keine new[]-Zuweisung nötig (und verursacht Compilerfehler).
 
   // Initialisiere Ausgänge
-  Serial.println("Initialisiere digitale Ausgänge:");
   for (uint8_t i = 0; i < DIGITAL_OUTPUTS_COUNT; i++) {
     int pin = getPinFromString(DIGITAL_OUTPUTS[i].pin);
     pinMode(pin, OUTPUT);
-    
-    // Setze den Ausgang auf den vordefinierten Initialzustand
-    bool initialState = DIGITAL_OUTPUTS[i].initial_state;
-    digitalWrite(pin, initialState ? HIGH : LOW);
-    previousOutputValues[i] = initialState ? HIGH : LOW;
+    // Explizit alle Ausgänge auf LOW setzen
+    digitalWrite(pin, LOW);
+    previousOutputValues[i] = LOW;
   }
 
   // Initialisiere Entprellungs-Arrays und Eingänge
   Serial.println("Initialisiere analoge Eingänge und zugehörige Ausgänge:");
- for (uint8_t i = 0; i < ANALOG_INPUTS_COUNT; i++) {
-  int inputPin = getPinFromString(ANALOG_INPUTS[i].pin);
-  
-  // Initialize with consistent state across all tracking variables
-  int initialReading = digitalRead(inputPin);
-  inputStates[i] = initialReading;
-  previousInputValues[i] = initialReading;
-  lastDebounceTime[i] = 0;
-  buttonPressInProgress[i] = false;
-  pressStartTime[i] = 0;
-  
-  // Log the initial state
-  Serial.print("Input ");
-  Serial.print(i);
-  Serial.print(" (");
-  Serial.print(ANALOG_INPUTS[i].name);
-  Serial.print(") initialized with state: ");
-  Serial.println(initialReading == LOW ? "PRESSED (LOW)" : "RELEASED (HIGH)");
-}
-  
+  for (uint8_t i = 0; i < ANALOG_INPUTS_COUNT; i++) {
+    int inputPin = getPinFromString(ANALOG_INPUTS[i].pin);
+    pinMode(inputPin, INPUT_PULLUP);
+
+    // Initialisiere Zustandsvariablen für Toggle-Logik
+    lastInputStates[i] = false;
+    outputStates[i] = false;  // Stelle sicher, dass dies false (AUS) ist
+
+    // Lese den Anfangswert, um ein sofortiges Umschalten zu verhindern
+    int initialReading = digitalRead(inputPin);
+    inputStates[i] = initialReading;
+    previousInputValues[i] = initialReading;
+
+    // Stelle sicher, dass alle Ausgänge für diesen Eingang auf LOW initialisiert sind
+    if (ANALOG_INPUTS[i].outputs_count > 0) {
+      for (uint8_t j = 0; j < ANALOG_INPUTS[i].outputs_count; j++) {
+        const char* outputPinStr = ANALOG_INPUTS[i].outputs[j].pin;
+        int outputPin = getPinFromString(outputPinStr);
+
+        // Als OUTPUT setzen und sicherstellen, dass er LOW ist
+        pinMode(outputPin, OUTPUT);
+        digitalWrite(outputPin, LOW);
+      }
+    }
+  }
 
   // Sende Discovery-Nachrichten
   sendDiscoveryMessages();
 
   // Sende initiale Statusinformationen
   sendInitialStateMessages();
-  applyDefaultOutputStates();
-   synchronizeOutputStates();
-  // Nach Anwendung der Default-Zustände, aktualisiere die outputStates
-  updateOutputStatesFromPins();
-
+applyDefaultOutputStates();
   // Debug-Ausgabe
   DEBUG_PRINTLN("Setup abgeschlossen");
 }
-void synchronizeOutputStates() {
-  Serial.println("\n*** Synchronisiere outputStates mit tatsächlichen Pin-Zuständen ***");
-  
-  // Zuordnung zwischen Eingängen und Ausgängen finden und synchronisieren
-  for (uint8_t i = 0; i < ANALOG_INPUTS_COUNT; i++) {
-    if (ANALOG_INPUTS[i].outputs_count > 0) {
-      // Nimm den ersten Ausgang als Referenz für diesen Eingang
-      const char* outputPinStr = ANALOG_INPUTS[i].outputs[0].pin;
-      int outputPin = getPinFromString(outputPinStr);
-      
-      // Lese tatsächlichen Pin-Zustand
-      bool actualState = (digitalRead(outputPin) == HIGH);
-      
-      // Setze den Logik-Zustand auf den physischen Zustand
-      outputStates[i] = actualState;
-      
-      Serial.print("Input ");
-      Serial.print(i);
-      Serial.print(" (");
-      Serial.print(ANALOG_INPUTS[i].name);
-      Serial.print(") outputState synchronisiert zu ");
-      Serial.println(actualState ? "HIGH (EIN)" : "LOW (AUS)");
-    }
-  }
-  
-  Serial.println("*** Synchronisierung abgeschlossen ***\n");
-}
-void updateOutputStatesFromPins() {
-  for (uint8_t i = 0; i < ANALOG_INPUTS_COUNT; i++) {
-    if (ANALOG_INPUTS[i].outputs_count > 0) {
-      // Nimm den ersten Ausgang als Referenz
-      const char* outputPinStr = ANALOG_INPUTS[i].outputs[0].pin;
-      int outputPin = getPinFromString(outputPinStr);
-      
-      // Aktualisiere den Status basierend auf dem tatsächlichen Pin-Zustand
-      outputStates[i] = (digitalRead(outputPin) == HIGH);
-      
-      Serial.print("Input ");
-      Serial.print(i);
-      Serial.print(" outputState synchronisiert zu ");
-      Serial.println(outputStates[i] ? "HIGH" : "LOW");
-    }
-  }
-}
-
-
 void loop() {
-  // MQTT-Verbindung prüfen ohne Blockierung
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop();
+    // MQTT-Verbindung prüfen ohne Blockierung
+    if (!client.connected()) {
+        reconnect();
+    }
+    client.loop();
 
-  // Zustände überwachen
-  monitorInputs();
-  monitorOutputs();
-  mapInputsToOutputs();
-
-  delay(50);  // Kurze Verzögerung
+    // Zustände überwachen
+    // monitorInputs(); // Diese Zeile entfernen
+    monitorOutputs();
+    mapInputsToOutputs(); // Diese Funktion übernimmt jetzt die komplette Eingangsprüfung
 }
 
 void reconnect() {
-  static uint8_t reconnectCount = 0;
-  const uint8_t MAX_RETRIES = 3;
-  
-  if (!client.connected() && millis() - lastReconnectAttempt >= RECONNECT_INTERVAL) {
-    lastReconnectAttempt = millis();
-    
-    if (++reconnectCount > MAX_RETRIES) {
-      // Hardware-Reset nach zu vielen Versuchen
-      DEBUG_MSG("Too many reconnection attempts, resetting...");
-      delay(1000);
-      // Implement watchdog reset here
-      return;
-    }
-    
+  unsigned long currentMillis = millis();
+
+  // Nur alle 5 Sekunden versuchen zu reconnecten
+  if (currentMillis - lastReconnectAttempt >= RECONNECT_INTERVAL) {
+    lastReconnectAttempt = currentMillis;
+
+    // Client-ID aus der Konfiguration verwenden
     if (client.connect(SYSTEM_CONFIG.mqtt.client_id)) {
-      reconnectCount = 0;
       mqttConnectionStatus = true;
-      client.subscribe((String(mqtt_base_topic) + "/#").c_str());
-      sendAvailabilityMessages();
+      DEBUG_PRINTLN("MQTT-Verbindung wiederhergestellt");
+
+      String subscriptionTopic = String(mqtt_base_topic) + "/#";
+      client.subscribe(subscriptionTopic.c_str());
+    } else {
+      mqttConnectionStatus = false;
+      DEBUG_PRINT("MQTT-Verbindung fehlgeschlagen, RC=");
+      DEBUG_PRINTLN(client.state());
     }
   }
 }
@@ -275,28 +211,16 @@ void sendAllStates() {
   sendAvailabilityMessages();
 }
 void applyDefaultOutputStates() {
-    Serial.println("\n*** Anwenden der konfigurierten Default-Zustände für alle Ausgänge ***");
-
     for (uint8_t i = 0; i < DIGITAL_OUTPUTS_COUNT; i++) {
         const char* pinName = DIGITAL_OUTPUTS[i].pin;
         int pin = getPinFromString(pinName);
         bool defaultState = DIGITAL_OUTPUTS[i].initial_state;
-
-        Serial.print("Setze Pin ");
-        Serial.print(pinName);
-        Serial.print(" (");
-        Serial.print(pin);
-        Serial.print(") auf Default-Zustand: ");
-        Serial.println(defaultState ? "HIGH (EIN)" : "LOW (AUS)");
-
         // Pin als Ausgang konfigurieren und Zustand setzen
         pinMode(pin, OUTPUT);
         digitalWrite(pin, defaultState ? HIGH : LOW);
 
         // Überprüfe den tatsächlichen Status
         int actualState = digitalRead(pin);
-        Serial.print("Tatsächlicher Zustand nach Setzen: ");
-        Serial.println(actualState == HIGH ? "HIGH" : "LOW");
 
         // MQTT-Status-Nachricht senden, um UI zu aktualisieren
         String statePayload = defaultState ? "ON" : "OFF";
@@ -307,19 +231,10 @@ void applyDefaultOutputStates() {
         String stateTopic = baseTopic + "/" + fullTopicPart + "/" + state_suffix;
 
         client.publish(stateTopic.c_str(), statePayload.c_str());
-        Serial.print("Status-Nachricht gesendet an: ");
-        Serial.print(stateTopic);
-        Serial.print(" mit Inhalt: ");
-        Serial.println(statePayload);
-
         // Kurze Pause für stabilere Kommunikation
-        delay(20);
+        delay(5);
     }
 
-    // Synchronisiere auch alle outputStates nach dem Setzen der Default-Zustände
-    synchronizeOutputStates();
-
-    Serial.println("*** Default-Zustände für alle Ausgänge angewendet ***\n");
 }
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   // Konvertiere das Payload-Byte-Array in eine Zeichenkette
@@ -328,7 +243,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     payloadStr += (char)payload[i];
   }
 
-  Serial.print("\n*** Message arrived [");
+  Serial.print("Message: [");
   Serial.print(topic);
   Serial.print("] ");
   Serial.println(payloadStr);
@@ -339,15 +254,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   // Prüfe auf spezifischen Control-Topic
   if (strcmp(topic, controlTopic.c_str()) == 0) {
     if (strcmp(payloadStr.c_str(), "3") == 0) {
-      Serial.println("Extern getriggertes Senden aller Statusinformationen");
       sendStateMessage(NULL, state_suffix, -1);
     }
     if (strcmp(payloadStr.c_str(), "2") == 0) {
-      Serial.println("Extern getriggertes Senden der Availability Messages");
       sendAvailabilityMessages();
     }
     if (strcmp(payloadStr.c_str(), "1") == 0) {
-      Serial.println("Extern getriggertes Senden der Discovery Messages");
       sendDiscoveryMessages();
     }
     return;
@@ -376,8 +288,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
           newState = false;
         } else {
           // Unbekannter Befehl
-          Serial.print("Unbekannter Befehl: ");
-          Serial.println(payloadStr);
+
           return;
         }
         
@@ -405,122 +316,84 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     Serial.println(topic);
   }
 }
-struct PinMapping {
-  const char* name;
-  uint8_t pin;
-};
-
-const PinMapping PIN_MAP[] PROGMEM = {
-  {"D0", CONTROLLINO_D0},
-  {"D1", CONTROLLINO_D1},
-  // ... weitere Pins
-};
-
 int getPinFromString(const char* pinStr) {
-  String pinName = pinStr;
-  if (!pinName.startsWith("CONTROLLINO_")) {
-    pinName = "CONTROLLINO_" + pinName;
+  String pinString = String(pinStr);
+  // Prüfen, ob der String bereits mit "CONTROLLINO_" beginnt
+  if (pinString.startsWith("CONTROLLINO_")) {
+    // Direktes Mapping verwenden
+  } else {
+    // Prefix "CONTROLLINO_" hinzufügen
+    pinString = "CONTROLLINO_" + pinString;
   }
-  
-  for (const auto& mapping : PIN_MAP) {
-    if (pinName.endsWith(mapping.name)) {
-      return mapping.pin;
-    }
-  }
+  // Mapping für Controllino Digital Pins
+  if (pinString == "CONTROLLINO_D0") return CONTROLLINO_D0;
+  if (pinString == "CONTROLLINO_D1") return CONTROLLINO_D1;
+  if (pinString == "CONTROLLINO_D2") return CONTROLLINO_D2;
+  if (pinString == "CONTROLLINO_D3") return CONTROLLINO_D3;
+  if (pinString == "CONTROLLINO_D4") return CONTROLLINO_D4;
+  if (pinString == "CONTROLLINO_D5") return CONTROLLINO_D5;
+  if (pinString == "CONTROLLINO_D6") return CONTROLLINO_D6;
+  if (pinString == "CONTROLLINO_D7") return CONTROLLINO_D7;
+  if (pinString == "CONTROLLINO_D8") return CONTROLLINO_D8;
+  if (pinString == "CONTROLLINO_D9") return CONTROLLINO_D9;
+  if (pinString == "CONTROLLINO_D10") return CONTROLLINO_D10;
+  if (pinString == "CONTROLLINO_D11") return CONTROLLINO_D11;
+  if (pinString == "CONTROLLINO_D12") return CONTROLLINO_D12;
+  if (pinString == "CONTROLLINO_D13") return CONTROLLINO_D13;
+  if (pinString == "CONTROLLINO_D14") return CONTROLLINO_D14;
+  if (pinString == "CONTROLLINO_D15") return CONTROLLINO_D15;
+  if (pinString == "CONTROLLINO_D16") return CONTROLLINO_D16;
+  if (pinString == "CONTROLLINO_D17") return CONTROLLINO_D17;
+  if (pinString == "CONTROLLINO_D18") return CONTROLLINO_D18;
+  if (pinString == "CONTROLLINO_D19") return CONTROLLINO_D19;
+  if (pinString == "CONTROLLINO_D20") return CONTROLLINO_D20;
+  if (pinString == "CONTROLLINO_D21") return CONTROLLINO_D21;
+  if (pinString == "CONTROLLINO_D22") return CONTROLLINO_D22;
+  if (pinString == "CONTROLLINO_D23") return CONTROLLINO_D23;
+
+  // Mapping für Controllino Analog Pins
+  if (pinString == "CONTROLLINO_A0") return CONTROLLINO_A0;
+  if (pinString == "CONTROLLINO_A1") return CONTROLLINO_A1;
+  if (pinString == "CONTROLLINO_A2") return CONTROLLINO_A2;
+  if (pinString == "CONTROLLINO_A3") return CONTROLLINO_A3;
+  if (pinString == "CONTROLLINO_A4") return CONTROLLINO_A4;
+  if (pinString == "CONTROLLINO_A5") return CONTROLLINO_A5;
+  if (pinString == "CONTROLLINO_A6") return CONTROLLINO_A6;
+  if (pinString == "CONTROLLINO_A7") return CONTROLLINO_A7;
+  if (pinString == "CONTROLLINO_A8") return CONTROLLINO_A8;
+  if (pinString == "CONTROLLINO_A9") return CONTROLLINO_A9;
+  if (pinString == "CONTROLLINO_A10") return CONTROLLINO_A10;
+  if (pinString == "CONTROLLINO_A11") return CONTROLLINO_A11;
+  if (pinString == "CONTROLLINO_A12") return CONTROLLINO_A12;
+  if (pinString == "CONTROLLINO_A13") return CONTROLLINO_A13;
+  if (pinString == "CONTROLLINO_A14") return CONTROLLINO_A14;
+  if (pinString == "CONTROLLINO_A15") return CONTROLLINO_A15;
+
+  // Mapping für Relay Pins (falls vorhanden)
+  if (pinString == "CONTROLLINO_R0") return CONTROLLINO_R0;
+  if (pinString == "CONTROLLINO_R1") return CONTROLLINO_R1;
+  if (pinString == "CONTROLLINO_R2") return CONTROLLINO_R2;
+  if (pinString == "CONTROLLINO_R3") return CONTROLLINO_R3;
+  if (pinString == "CONTROLLINO_R4") return CONTROLLINO_R4;
+  if (pinString == "CONTROLLINO_R5") return CONTROLLINO_R5;
+  if (pinString == "CONTROLLINO_R6") return CONTROLLINO_R6;
+  if (pinString == "CONTROLLINO_R7") return CONTROLLINO_R7;
+  if (pinString == "CONTROLLINO_R8") return CONTROLLINO_R8;
+  if (pinString == "CONTROLLINO_R9") return CONTROLLINO_R9;
+  if (pinString == "CONTROLLINO_R10") return CONTROLLINO_R10;
+  if (pinString == "CONTROLLINO_R11") return CONTROLLINO_R11;
+  if (pinString == "CONTROLLINO_R12") return CONTROLLINO_R12;
+  if (pinString == "CONTROLLINO_R13") return CONTROLLINO_R13;
+  if (pinString == "CONTROLLINO_R14") return CONTROLLINO_R14;
+  if (pinString == "CONTROLLINO_R15") return CONTROLLINO_R15;
+  // Pin nicht gefunden
+
   return -1;
 }
 
 // Extrahiert den Pin direkt aus einem MQTT-Topic basierend auf bekannten Mustern
 // Extrahiert den Pin direkt aus einem MQTT-Topic für Controllino mit ausführlichem Debug
-int extractPinFromTopic(const char* topic) {
-  String topicStr = String(topic);
-  Serial.print("Extrahiere Pin aus Topic: ");
-  Serial.println(topicStr);
 
-  // Topic-Teile in Segmente aufteilen
-  int startPos = topicStr.lastIndexOf('/');
-  if (startPos == -1) {
-    Serial.println("Ungültiges Topic-Format: Kein '/' gefunden");
-    return -1;
-  }
-
-  // Das vorletzte Segment enthält die Pin-Information (z.B. C2_D11)
-  String segment = "";
-  int prevSlashPos = topicStr.lastIndexOf('/', startPos - 1);
-  if (prevSlashPos != -1) {
-    segment = topicStr.substring(prevSlashPos + 1, startPos);
-  } else {
-    segment = topicStr.substring(0, startPos);
-  }
-
-  Serial.print("Extrahiertes Segment: ");
-  Serial.println(segment);
-
-  // Nun suchen wir präzise nach 'D1', 'D11', usw. mit Unterstrichen oder Schrägstrichen davor
-  for (int d = 0; d <= 23; d++) {
-    // Für einstellige Zahlen
-    String dPatternSingle = "D" + String(d) + "_";
-    String dPatternSingleEnd = "D" + String(d) + "/";
-    String dPatternSingleFinal = "D" + String(d);
-
-    // Für zweistellige Zahlen (10-23)
-    String dPatternDouble = "D" + String(d) + "_";
-    String dPatternDoubleEnd = "D" + String(d) + "/";
-    String dPatternDoubleFinal = "D" + String(d);
-
-    // Genaue Muster-Suche
-    bool foundPattern = false;
-
-    // Prüfe, ob das Muster am Ende steht
-    if (segment.endsWith(dPatternSingleFinal) || segment.endsWith(dPatternDoubleFinal)) {
-      foundPattern = true;
-    }
-
-    // Prüfe, ob das Muster mit einem Unterstrich oder Schrägstrich gefolgt wird
-    int patternPos = segment.indexOf(dPatternSingle);
-    if (patternPos != -1 || segment.indexOf(dPatternSingleEnd) != -1) {
-      foundPattern = true;
-    }
-
-    if (foundPattern) {
-      String pinStr = "CONTROLLINO_D" + String(d);
-      Serial.print("Pin gefunden: ");
-      Serial.println(pinStr);
-      return getPinFromString(pinStr.c_str());
-    }
-  }
-
-  // Ähnliche Prüfung für A-Pins
-  for (int a = 0; a <= 15; a++) {
-    String aPattern = "_A" + String(a);
-    String aPatternEnd = "A" + String(a) + "/";
-    String aPatternFinal = "A" + String(a);
-
-    if (segment.endsWith(aPatternFinal) || segment.indexOf(aPattern) != -1 || segment.indexOf(aPatternEnd) != -1) {
-      String pinStr = "CONTROLLINO_A" + String(a);
-      Serial.print("Pin gefunden: ");
-      Serial.println(pinStr);
-      return getPinFromString(pinStr.c_str());
-    }
-  }
-
-  // Ähnliche Prüfung für R-Pins
-  for (int r = 0; r <= 15; r++) {
-    String rPattern = "_R" + String(r);
-    String rPatternEnd = "R" + String(r) + "/";
-    String rPatternFinal = "R" + String(r);
-
-    if (segment.endsWith(rPatternFinal) || segment.indexOf(rPattern) != -1 || segment.indexOf(rPatternEnd) != -1) {
-      String pinStr = "CONTROLLINO_R" + String(r);
-      Serial.print("Pin gefunden: ");
-      Serial.println(pinStr);
-      return getPinFromString(pinStr.c_str());
-    }
-  }
-
-  Serial.println("Kein Pin im Topic gefunden");
-  return -1;
-}
 void sendInitialStateMessages() {
   //Sende Statusinachrichten für alle digitalen Ausgänge
   for (uint8_t i = 0; i < DIGITAL_OUTPUTS_COUNT; i++) {
@@ -550,26 +423,29 @@ void sendInitialStateMessages() {
   sendAvailabilityMessages();
 }
 void monitorInputs() {
-  for (uint8_t i = 0; i < ANALOG_INPUTS_COUNT; i++) {
-      int pin = getPinFromString(ANALOG_INPUTS[i].pin);
-      int currentValue = digitalRead(pin);
+    for (uint8_t i = 0; i < ANALOG_INPUTS_COUNT; i++) {
+        int pin = getPinFromString(ANALOG_INPUTS[i].pin);
+        int currentValue = digitalRead(pin);
 
-      // Wenn sich der Wert geändert hat, sende eine Status-MQTT-Nachricht
-      if (currentValue != previousInputValues[i]) {  // Bei digitalen Werten keine Hysterese notwendig
-          Serial.print("Value changed for digital input on pin ");
-          Serial.print(pin);
-          Serial.print(" from ");
-          Serial.print(previousInputValues[i]);
-          Serial.print(" to ");
-          Serial.println(currentValue);
-          previousInputValues[i] = currentValue;
-          sendStateMessage(
-              ANALOG_INPUTS[i].mqtt_topic,
-              state_suffix,
-              currentValue
-          );
-      }
-  }
+        // Wenn sich der Wert geändert hat, sende eine Status-MQTT-Nachricht
+        if (currentValue != previousInputValues[i]) {
+            Serial.print(F("Eingang "));
+            Serial.print(ANALOG_INPUTS[i].name);
+            Serial.print(F(" (Pin "));
+            Serial.print(pin);
+            Serial.print(F(") änderte sich von "));
+            Serial.print(previousInputValues[i] ? "HIGH" : "LOW");
+            Serial.print(F(" zu "));
+            Serial.println(currentValue ? "HIGH" : "LOW");
+
+            previousInputValues[i] = currentValue;
+            sendStateMessage(
+                ANALOG_INPUTS[i].mqtt_topic,
+                state_suffix,
+                currentValue
+            );
+        }
+    }
 }
 
 void monitorOutputs() {
@@ -581,7 +457,6 @@ void monitorOutputs() {
 
     // Wenn sich der Wert geändert hat, sende eine Status-MQTT-Nachricht
     if (currentValue != previousOutputValues[i]) {
-      Serial.print("Value changed for digital output on pin ");
       Serial.print(pin);
       Serial.print(" from ");
       Serial.print(previousOutputValues[i]);
@@ -595,284 +470,413 @@ void monitorOutputs() {
     }
   }
 }
+
 void mapInputsToOutputs() {
-  static unsigned long lastToggleTime[ANALOG_INPUTS_COUNT] = { 0 }; // Verhindert Prellen beim Umschalten
-  const unsigned long TOGGLE_DELAY = 50; // Minimaler Abstand zwischen Schaltvorgängen
-  
   for (uint8_t i = 0; i < ANALOG_INPUTS_COUNT; i++) {
-    int inputPin = getPinFromString(ANALOG_INPUTS[i].pin);
-    int reading = digitalRead(inputPin);
+    int reading = digitalRead(getPinFromString(ANALOG_INPUTS[i].pin));
 
-    // Nur verarbeiten wenn sich der Wert geändert hat
-    if (reading != previousInputValues[i]) {
+    // Wenn eine Zustandsänderung erkannt wird (Prellen beginnt), starte den Timer.
+    if (reading != lastInputStates[i]) {
       lastDebounceTime[i] = millis();
-      
-      // Debug output
-      if (DEBUG) {
-        Serial.print(F("Input ")); // F() Makro spart RAM
-        Serial.print(i);
-        Serial.print(F(" changed from "));
-        Serial.print(previousInputValues[i] == LOW ? F("PRESSED") : F("RELEASED"));
-        Serial.print(F(" to "));
-        Serial.println(reading == LOW ? F("PRESSED") : F("RELEASED"));
-      }
     }
 
-    // Entprellte Zustandsänderung verarbeiten
+    // Wenn der Timer abgelaufen ist, hat sich der Zustand stabilisiert.
     if ((millis() - lastDebounceTime[i]) > DEBOUNCE_DELAY) {
+      // Prüfe, ob der neue, stabile Zustand sich vom alten stabilen Zustand unterscheidet.
       if (reading != inputStates[i]) {
+        // Aktualisiere den stabilen Zustand.
         inputStates[i] = reading;
-        
-        // Taste wurde gedrückt
+
+        // Sende immer den neuen Zustand des Eingangs per MQTT.
+        sendStateMessage(
+          ANALOG_INPUTS[i].mqtt_topic,
+          state_suffix,
+          reading
+        );
+
+        // Reagiere nur auf die fallende Flanke (Tastendruck) für die lokale Aktion.
         if (reading == LOW) {
-          pressStartTime[i] = millis();
-          buttonPressInProgress[i] = true;
-          wasLongPress[i] = false;
-          
-          if (DEBUG) {
-            Serial.print(F("Button press started: "));
-            Serial.println(ANALOG_INPUTS[i].name);
-          }
-        }
-        // Taste wurde losgelassen
-        else if (buttonPressInProgress[i]) {
-          unsigned long pressDuration = millis() - pressStartTime[i];
-          buttonPressInProgress[i] = false;
-          
-          // Langer Tastendruck erkannt
-          if (pressDuration >= LONG_PRESS_THRESHOLD) {
-            wasLongPress[i] = true;
-            if (DEBUG) Serial.println(F("Long press detected - no action"));
-          }
-          // Kurzer Tastendruck und kein vorheriger langer Tastendruck
-          else if (!wasLongPress[i] && (millis() - lastToggleTime[i] > TOGGLE_DELAY)) {
-            outputStates[i] = !outputStates[i];
-            lastToggleTime[i] = millis();
-            
+          // Führe die lokale Verknüpfung nur aus, wenn MQTT offline ist.
+
             if (ANALOG_INPUTS[i].outputs_count > 0) {
-              updateOutputsForInput(i);
+              for (uint8_t j = 0; j < ANALOG_INPUTS[i].outputs_count; j++) {
+                const char* outputPinStr = ANALOG_INPUTS[i].outputs[j].pin;
+                int outputPin = getPinFromString(outputPinStr);
+
+                // Toggle Ausgangszustand
+                bool currentState = digitalRead(outputPin);
+                digitalWrite(outputPin, !currentState);
+
+                // Finde den passenden Ausgang und sende seinen neuen Zustand
+                for (uint8_t k = 0; k < DIGITAL_OUTPUTS_COUNT; k++) {
+                  if (strcmp(DIGITAL_OUTPUTS[k].pin, outputPinStr) == 0) {
+                     Serial.print(F("Eingang "));
+                     Serial.print(ANALOG_INPUTS[i].name);
+                     Serial.print(F(" (Pin "));
+                     Serial.print(outputPinStr);
+                     Serial.print(F(") änderte sich von "));
+                     Serial.print(previousInputValues[i] ? "HIGH" : "LOW");
+                     Serial.print(F(" zu "));
+                     Serial.println(currentState ? "HIGH" : "LOW");  // Geändert: currentValue -> currentState
+                    sendStateMessage(
+                      DIGITAL_OUTPUTS[k].mqtt_topic,
+                      state_suffix,
+                      !currentState
+                    );
+                    break;
+                  }
+                }
+              }
             }
-            if (DEBUG) Serial.println(F("Short press - toggling state"));
-          }
+          //}
         }
       }
     }
-    previousInputValues[i] = reading;
+    // Aktualisiere den Zustand des letzten Lesevorgangs.
+    lastInputStates[i] = reading;
   }
 }
 
-// Neue Hilfsfunktion zum Aktualisieren der Ausgänge
-void updateOutputsForInput(uint8_t inputIndex) {
-  for (uint8_t j = 0; j < ANALOG_INPUTS[inputIndex].outputs_count; j++) {
-    const char* outputPinStr = ANALOG_INPUTS[inputIndex].outputs[j].pin;
-    int outputPin = getPinFromString(outputPinStr);
-    
-    digitalWrite(outputPin, outputStates[inputIndex] ? HIGH : LOW);
-    
-    // MQTT Update senden
-    for (uint8_t k = 0; k < DIGITAL_OUTPUTS_COUNT; k++) {
-      if (strcmp(DIGITAL_OUTPUTS[k].pin, outputPinStr) == 0) {
-        String topicStr = String(DIGITAL_OUTPUTS[k].mqtt_topic);
-        int slashIndex = topicStr.indexOf('/');
-        String baseTopic = "aha/" + topicStr.substring(0, slashIndex);
-        String fullTopicPart = topicStr.substring(slashIndex + 1);
-        String stateTopic = baseTopic + "/" + fullTopicPart + "/" + state_suffix;
-        
-        const char* statePayload = outputStates[inputIndex] ? "ON" : "OFF";
-        client.publish(stateTopic.c_str(), statePayload);
-        break;
-      }
-    }
-  }
-}
+
 void sendStateMessage(const char* mqtt_topic, const char* state_suffix, int value) {
-  if (!client.connected()) return;
-  
-  static char topicBuffer[64];
-  snprintf(topicBuffer, sizeof(topicBuffer), "aha/%s/%s", mqtt_topic, state_suffix);
-  const char* payload = (value == HIGH) ? "ON" : "OFF";
-  
-  publishWithRetry(topicBuffer, payload);
+    if (!mqtt_topic) {
+        // ... bestehender Code für NULL mqtt_topic ...
+        return;
+    }
+
+    static char stateTopic[128];  // Statischer Buffer
+    const char* slash = strchr(mqtt_topic, '/');
+    if (!slash) return;
+
+    size_t baseLen = slash - mqtt_topic;
+    if (baseLen >= sizeof(basePart)) baseLen = sizeof(basePart) - 1;
+
+    memcpy(basePart, mqtt_topic, baseLen);
+    basePart[baseLen] = '\0';
+    
+    snprintf(stateTopic, sizeof(stateTopic), 
+            "aha/%s/%s/%s", 
+            basePart, 
+            slash + 1, 
+            state_suffix);
+
+    publishWithRetry(stateTopic, value == HIGH ? "ON" : "OFF");
 }
 void sendAvailabilityMessages() {
-  // Availability-Nachrichten für digitale Ausgänge senden
+  char availabilityTopic[128];
   for (uint8_t i = 0; i < DIGITAL_OUTPUTS_COUNT; i++) {
-    const DigitalOutput& digitalOutput = DIGITAL_OUTPUTS[i];
-    String topicParts = digitalOutput.mqtt_topic;
-    int slashIndex = topicParts.indexOf('/');
-    String baseTopic = "aha/" + topicParts.substring(0, slashIndex);
-    String fullTopicPart = topicParts.substring(slashIndex + 1);
-    String availabilityTopic = baseTopic + "/" + fullTopicPart + "/" + availability_suffix;
-
-    bool publishResult = client.publish(availabilityTopic.c_str(), "online");
-    // Hier kannst du noch eine Fehlerbehandlung hinzufügen, wenn das Senden fehlschlägt
+    const char* topicParts = DIGITAL_OUTPUTS[i].mqtt_topic;
+    const char* slash = strchr(topicParts, '/');
+    if (!slash) continue;
+    int baseLen = slash - topicParts;
+    char base[48];
+    char full[64];
+    if (baseLen >= (int)sizeof(base)) baseLen = sizeof(base)-1;
+    memcpy(base, topicParts, baseLen); base[baseLen] = '\0';
+    strncpy(full, slash + 1, sizeof(full)-1); full[sizeof(full)-1] = '\0';
+    snprintf(availabilityTopic, sizeof(availabilityTopic), "aha/%s/%s/%s", base, full, availability_suffix);
+    client.publish(availabilityTopic, "online");
   }
 
-  // Availability-Nachrichten für analoge Eingänge senden
   for (uint8_t i = 0; i < ANALOG_INPUTS_COUNT; i++) {
-    const AnalogInput& analogInput = ANALOG_INPUTS[i];
-    String topicParts = analogInput.mqtt_topic;
-    int slashIndex = topicParts.indexOf('/');
-    String baseTopic = "aha/" + topicParts.substring(0, slashIndex);
-    String fullTopicPart = topicParts.substring(slashIndex + 1);
-    String availabilityTopic = baseTopic + "/" + fullTopicPart + "/" + availability_suffix;
-
-    bool publishResult = client.publish(availabilityTopic.c_str(), "online");
-    // Hier kannst du noch eine Fehlerbehandlung hinzufügen, wenn das Senden fehlschlägt
+    const char* topicParts = ANALOG_INPUTS[i].mqtt_topic;
+    const char* slash = strchr(topicParts, '/');
+    if (!slash) continue;
+    int baseLen = slash - topicParts;
+    char base[48];
+    char full[64];
+    if (baseLen >= (int)sizeof(base)) baseLen = sizeof(base)-1;
+    memcpy(base, topicParts, baseLen); base[baseLen] = '\0';
+    strncpy(full, slash + 1, sizeof(full)-1); full[sizeof(full)-1] = '\0';
+    snprintf(availabilityTopic, sizeof(availabilityTopic), "aha/%s/%s/%s", base, full, availability_suffix);
+    client.publish(availabilityTopic, "online");
   }
 }
 void sendDiscoveryMessages() {
-  Serial.println("Sende Discovery-Nachrichten...");
-  Serial.print("Anzahl digitaler Ausgänge: ");
-  Serial.println(sizeof(DIGITAL_OUTPUTS) / sizeof(DIGITAL_OUTPUTS[0]));
+    Serial.println(F("Sende Discovery-Nachrichten..."));
+    
+    // Discovery für digitale Ausgänge
+    for (uint8_t i = 0; i < DIGITAL_OUTPUTS_COUNT; i++) {
+        const DigitalOutput& digitalOutput = DIGITAL_OUTPUTS[i];
+        const char* topicParts = digitalOutput.mqtt_topic;
+        
+        // Validiere Topic
+        if (!topicParts || !strchr(topicParts, '/')) continue;
+        
+        // Parse und sanitize Topic-Teile
+        size_t baseLen = strchr(topicParts, '/') - topicParts;
+        if (baseLen >= BASE_PART_SIZE) baseLen = BASE_PART_SIZE - 1;
+        
+        memset(basePart, 0, BASE_PART_SIZE);
+        memset(fullPart, 0, FULL_PART_SIZE);
+        
+        memcpy(basePart, topicParts, baseLen);
+        strncpy(fullPart, strchr(topicParts, '/') + 1, FULL_PART_SIZE - 1);
+        
+        // Sanitize strings
+        sanitizeString(basePart, strlen(basePart));
+        sanitizeString(fullPart, strlen(fullPart));
+        
+        // Bestimme device_class basierend auf device_class Parameter
+        const char* discoveryType = "switch";  // Default
+        const char* deviceClass = "switch";    // Default
+        
+        if (strcmp(digitalOutput.device_class, "light") == 0) {
+            discoveryType = "light";
+            deviceClass = "light";
+        } else if (strcmp(digitalOutput.device_class, "switch") == 0) {
+            discoveryType = "switch";
+            deviceClass = "switch";
+        }
+        
+        // Build discovery topic mit dynamischem Typ
+        snprintf(discoveryTopic, DISCOVERY_TOPIC_SIZE,
+                "homeassistant/%s/%s/%s/config", discoveryType, basePart, fullPart);
+                
+        snprintf(stateTopic, sizeof(stateTopic),
+                 "aha/%s/%s/%s", basePart, fullPart, state_suffix);
+        snprintf(commandTopic, sizeof(commandTopic),
+                 "aha/%s/%s/%s", basePart, fullPart, command_suffix);
+        snprintf(availabilityTopic, sizeof(availabilityTopic),
+                 "aha/%s/%s/%s", basePart, fullPart, availability_suffix);
 
-  // Discovery-Nachrichten für digitale Ausgänge senden
-  for (uint8_t i = 0; i < sizeof(DIGITAL_OUTPUTS) / sizeof(DIGITAL_OUTPUTS[0]); i++) {
-    const DigitalOutput& digitalOutput = DIGITAL_OUTPUTS[i];
+        // Reuse static doc
+        doc.clear();
+        doc["name"] = digitalOutput.name;
+        doc["stat_t"] = stateTopic;
+        doc["cmd_t"] = commandTopic;
+        doc["avty_t"] = availabilityTopic;
+        doc["pl_on"] = "ON";
+        doc["pl_off"] = "OFF";
+        doc["dev_cla"] = deviceClass;  // Verwende dynamischen device_class
+        doc["uniq_id"] = fullPart;
 
-    // Serial.print("Verarbeite digitalen Ausgang: ");
-    // Serial.println(digitalOutput.name);
+        JsonObject device = doc.createNestedObject("device");
+        device["ids"] = digitalOutput.mqtt_device;
+        device["name"] = digitalOutput.mqtt_device;
 
-    String topicParts = digitalOutput.mqtt_topic;
-    int slashIndex = topicParts.indexOf('/');
-    String baseTopic = "aha/" + topicParts.substring(0, slashIndex);
-    String fullTopicPart = topicParts.substring(slashIndex + 1);
+        size_t len = serializeJson(doc, discoveryPayloadBuf, sizeof(discoveryPayloadBuf));
+        if (len == 0) {
+          Serial.println(F("Fehler: Discovery-Payload zu groß oder serializeJson fehlgeschlagen"));
+          continue;
+        }
 
-    String discoveryTopic = "homeassistant/switch/" + baseTopic.substring(4) + "/" + fullTopicPart + "/config";
+        Serial.print(F("Discovery-Topic: "));
+        Serial.println(discoveryTopic);
+        Serial.print(F("Discovery-Payload: "));
+        Serial.println(discoveryPayloadBuf);
 
-    Serial.print("Discovery-Topic: ");
-     Serial.println(discoveryTopic);
+        if (!client.connected()) reconnect();
+        bool published = client.publish(discoveryTopic, discoveryPayloadBuf, true);
+        if (!published) {
+          Serial.print(F("FEHLER: Konnte Discovery nicht senden für: "));
+          Serial.println(digitalOutput.name);
+          Serial.print(F("Client-State: "));
+          Serial.println(client.state());
+        }
 
-    StaticJsonDocument<712> discoveryDoc;
-    discoveryDoc["name"] = digitalOutput.name;
+        bool state = digitalRead(getPinFromString(digitalOutput.pin));
+        client.publish(stateTopic, state ? "ON" : "OFF", true);
+        client.publish(availabilityTopic, "online", true);
 
-    String stateTopic = baseTopic + "/" + fullTopicPart + "/" + state_suffix;
-    String commandTopic = baseTopic + "/" + fullTopicPart + "/" + command_suffix;
-    String availabilityTopic = baseTopic + "/" + fullTopicPart + "/" + availability_suffix;
-
-    discoveryDoc["state_topic"] = stateTopic;
-    discoveryDoc["command_topic"] = commandTopic;
-    discoveryDoc["availability_topic"] = availabilityTopic;
-
-    discoveryDoc["payload_on"] = "ON";
-    discoveryDoc["payload_off"] = "OFF";
-    discoveryDoc["device_class"] = "switch";
-
-    discoveryDoc["unique_id"] = fullTopicPart;
-
-    JsonObject device = discoveryDoc.createNestedObject("device");
-    device["identifiers"] = digitalOutput.mqtt_device;
-    device["name"] = digitalOutput.mqtt_device;
-
-    String discoveryPayload;
-    serializeJson(discoveryDoc, discoveryPayload);
-
-     Serial.print("Discovery-Payload: ");
-     Serial.println(discoveryPayload);
-
-    if (!client.connected()) {
-      Serial.println("MQTT-Client nicht verbunden! Versuche erneut zu verbinden...");
-      reconnect();
+        client.loop();
+        delay(8);
     }
 
-    bool publishResult = client.publish(discoveryTopic.c_str(), discoveryPayload.c_str());
+    // Discovery für Eingänge (binary_sensor)
+    for (uint8_t i = 0; i < ANALOG_INPUTS_COUNT; i++) {
+        const AnalogInput& analogInput = ANALOG_INPUTS[i];
+        const char* topicParts = analogInput.mqtt_topic;
+        printTopicDebug(topicParts);
+        const char* slashPos = strchr(topicParts, '/');
+        if (!slashPos) continue;
+        int baseLen = slashPos - topicParts;
+        if (baseLen >= (int)sizeof(basePart)) baseLen = sizeof(basePart) - 1;
+        memcpy(basePart, topicParts, baseLen);
+        basePart[baseLen] = '\0';
 
-    if (publishResult) {
-      // Serial.print("Discovery-Nachricht erfolgreich gesendet für: ");
-      // Serial.println(digitalOutput.name);
-    } else {
-      Serial.print("FEHLER: Konnte Discovery-Nachricht NICHT senden für: ");
-      Serial.println(digitalOutput.name);
-      Serial.print("Client-State: ");
-      Serial.println(client.state());
+        // Debug
+        Serial.print(F("mqtt_topic addr: "));
+        Serial.println((uintptr_t)topicParts, HEX);
+        Serial.print(F("mqtt_topic: "));
+        Serial.println(topicParts);
+        hexdump(topicParts);
+
+        char fullPart[128];
+        size_t fullLen = strlen(slashPos + 1);
+        if (fullLen >= sizeof(fullPart)) fullLen = sizeof(fullPart) - 1;
+        memcpy(fullPart, slashPos + 1, fullLen);
+        fullPart[fullLen] = '\0';
+        for (size_t k = 0; k < fullLen; ++k) {
+          unsigned char c = (unsigned char)fullPart[k];
+          if (!((c >= 'A' && c <= 'Z') ||
+                (c >= 'a' && c <= 'z') ||
+                (c >= '0' && c <= '9') ||
+                c == '_' || c == '-')) {
+            fullPart[k] = 'A';
+          }
+        }
+
+        snprintf(discoveryTopic, sizeof(discoveryTopic),
+                 "homeassistant/binary_sensor/%s/%s/config", basePart, fullPart);
+        snprintf(stateTopic, sizeof(stateTopic),
+                 "aha/%s/%s/%s", basePart, fullPart, state_suffix);
+        snprintf(availabilityTopic, sizeof(availabilityTopic),
+                 "aha/%s/%s/%s", basePart, fullPart, availability_suffix);
+
+        doc.clear();
+        doc["name"] = encodeUTF8(analogInput.name);  // Encode special characters
+        doc["stat_t"] = stateTopic;
+        doc["avty_t"] = availabilityTopic;
+        doc["pl_on"] = "ON";
+        doc["pl_off"] = "OFF";
+        doc["dev_cla"] = analogInput.device_class;
+        doc["uniq_id"] = fullPart;
+
+        JsonObject device = doc.createNestedObject("device");
+        device["ids"] = encodeUTF8(analogInput.mqtt_device);
+        device["name"] = encodeUTF8(analogInput.mqtt_device);
+
+        size_t len = serializeJson(doc, discoveryPayloadBuf, sizeof(discoveryPayloadBuf));
+        if (len == 0) {
+          Serial.println(F("Fehler: Discovery-Payload zu groß oder serializeJson fehlgeschlagen"));
+          continue;
+        }
+
+        Serial.print(F("Discovery-Topic: "));
+        Serial.println(discoveryTopic);
+        Serial.print(F("Discovery-Payload: "));
+        Serial.println(discoveryPayloadBuf);
+
+        if (!client.connected()) reconnect();
+        bool published = client.publish(discoveryTopic, discoveryPayloadBuf, true);
+        if (!published) {
+          Serial.print(F("FEHLER: Konnte Discovery nicht senden für: "));
+          Serial.println(analogInput.name);
+          Serial.print(F("Client-State: "));
+          Serial.println(client.state());
+        }
+
+        bool state = digitalRead(getPinFromString(analogInput.pin));
+        client.publish(stateTopic, state ? "ON" : "OFF", true);
+        client.publish(availabilityTopic, "online", true);
+
+        client.loop();
+        delay(8);
     }
 
-    // Initiale Status-Nachricht senden
-    bool state = digitalRead(digitalOutput.pin);
-    String statePayload = state ? "ON" : "OFF";
-    bool statePublishResult = client.publish(stateTopic.c_str(), statePayload.c_str());
-
-    // // Initiale Verfügbarkeitsnachricht senden
-    bool availabilityPublishResult = client.publish(availabilityTopic.c_str(), "online");
-
-    client.loop();  // MQTT-Nachrichten verarbeiten
-    delay(50);     // Kurze Verzögerung zwischen Nachrichten
-  }
-
-  // Discovery-Nachrichten für digitale Eingänge (als AnalogInput deklariert) senden
-  Serial.println("Sende Discovery-Nachrichten für digitale Eingänge...");
-  Serial.print("Anzahl digitaler Eingänge: ");
-  Serial.println(sizeof(ANALOG_INPUTS) / sizeof(ANALOG_INPUTS[0]));
-
-  for (uint8_t i = 0; i < sizeof(ANALOG_INPUTS) / sizeof(ANALOG_INPUTS[0]); i++) {
-    const AnalogInput& analogInput = ANALOG_INPUTS[i];
-
-    // Serial.print("Verarbeite digitalen Eingang: ");
-    // Serial.println(analogInput.name);
-
-    String topicParts = analogInput.mqtt_topic;
-    int slashIndex = topicParts.indexOf('/');
-    String baseTopic = "aha/" + topicParts.substring(0, slashIndex);
-    String fullTopicPart = topicParts.substring(slashIndex + 1);
-
-    String discoveryTopic = "homeassistant/binary_sensor/" + baseTopic.substring(4) + "/" + fullTopicPart + "/config";
-
-     Serial.print("Discovery-Topic: ");
-     Serial.println(discoveryTopic);
-
-    StaticJsonDocument<512> discoveryDoc;
-    discoveryDoc["name"] = analogInput.name;
-
-    String stateTopic = baseTopic + "/" + fullTopicPart + "/" + state_suffix;
-    String availabilityTopic = baseTopic + "/" + fullTopicPart + "/" + availability_suffix;
-
-    discoveryDoc["state_topic"] = stateTopic;
-    discoveryDoc["availability_topic"] = availabilityTopic;
-
-    discoveryDoc["payload_on"] = "ON";
-    discoveryDoc["payload_off"] = "OFF";
-    discoveryDoc["device_class"] = analogInput.device_class;
-
-    discoveryDoc["unique_id"] = fullTopicPart;
-
-    JsonObject device = discoveryDoc.createNestedObject("device");
-    device["identifiers"] = analogInput.mqtt_device;
-    device["name"] = analogInput.mqtt_device;
-
-    String discoveryPayload;
-    serializeJson(discoveryDoc, discoveryPayload);
-
-     Serial.print("Discovery-Payload: ");
-     Serial.println(discoveryPayload);
-
-    if (!client.connected()) {
-      Serial.println("MQTT-Client nicht verbunden! Versuche erneut zu verbinden...");
-      reconnect();
-    }
-
-    bool publishResult = client.publish(discoveryTopic.c_str(), discoveryPayload.c_str());
-
-    if (publishResult) {
-      // Serial.print("Discovery-Nachricht erfolgreich gesendet für: ");
-      // Serial.println(analogInput.name);
-    } else {
-      Serial.print("FEHLER: Konnte Discovery-Nachricht NICHT senden für: ");
-      Serial.println(analogInput.name);
-      Serial.print("Client-State: ");
-      Serial.println(client.state());
-    }
-
-    // Initiale Status-Nachricht senden
-    bool state = digitalRead(analogInput.pin);
-    String statePayload = state ? "ON" : "OFF";
-    bool statePublishResult = client.publish(stateTopic.c_str(), statePayload.c_str());
-
-    // // Initiale Verfügbarkeitsnachricht senden
-    bool availabilityPublishResult = client.publish(availabilityTopic.c_str(), "online");
-
-    client.loop();  // MQTT-Nachrichten verarbeiten
-    delay(50);     // Kurze Verzögerung zwischen Nachrichten
-  }
-
-  Serial.println("Senden der Discovery-Nachrichten abgeschlossen.");
+    Serial.println(F("Senden der Discovery-Nachrichten abgeschlossen."));
 }
+
+int freeMemory() {
+  extern int __heap_start, *__brkval;
+  int v;
+  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
+}
+
+static void printTopicDebug(const char* topic) {
+  Serial.print(F("mqtt_topic addr: "));
+  Serial.println((uintptr_t)topic, HEX);
+  if (!topic) { Serial.println(F("NULL mqtt_topic")); return; }
+  size_t len = strlen(topic);
+  Serial.print(F("mqtt_topic: "));
+  Serial.println(topic);
+}
+
+// Neue Hilfsfunktion für String-Sanitization
+static void sanitizeString(char* str, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)str[i];
+        if (!((c >= 'A' && c <= 'Z') ||
+              (c >= 'a' && c <= 'z') ||
+              (c >= '0' && c <= '9') ||
+              c == '_' || c == '-')) {
+            str[i] = 'D';  // Ersetzt ungültige Zeichen durch 'D'
+        }
+    }
+}
+
+bool publishWithRetry(const char* topic, const char* payload, bool retained) {
+    if (!client.connected()) {
+        reconnect();  // Stellt sicher, dass wir verbunden sind
+    }
+    
+    for (uint8_t retry = 0; retry < 3; retry++) {
+        if (client.publish(topic, payload, retained)) {
+            return true;
+        }
+        delay(50);
+        client.loop();
+        
+        // Bei Verbindungsverlust erneut verbinden
+        if (!client.connected()) {
+            reconnect();
+        }
+    }
+    return false;
+}
+
+// Implementierung der hexdump Funktion
+void hexdump(const char* data) {
+    if (!data) {
+        Serial.println(F("NULL data pointer"));
+        return;
+    }
+    
+    size_t len = strlen(data);
+    Serial.print(F("Length: ")); 
+    Serial.println(len);
+    Serial.print(F("Hex: "));
+    
+    for (size_t i = 0; i < len; i++) {
+        if (i > 0) Serial.print(' ');
+        
+        // Konvertiere Byte zu Hex
+        char hex[3];
+        snprintf(hex, sizeof(hex), "%02X", (unsigned char)data[i]);
+        Serial.print(hex);
+    }
+    Serial.println();
+}
+
+// Nach den anderen Hilfsfunktionen wie sanitizeString, vor sendDiscoveryMessages
+static String encodeUTF8(const char* str) {
+    if (!str) return String();
+    
+    String result;
+    while (*str) {
+        unsigned char c = (unsigned char)*str++;
+        
+        switch(c) {
+            case 0xC4: // Ä
+                result += "Ae";
+                break;
+            case 0xE4: // ä
+                result += "ae";
+                break;
+            case 0xD6: // Ö
+                result += "Oe";
+                break;
+            case 0xF6: // ö
+                result += "oe";
+                break;
+            case 0xDC: // Ü
+                result += "Ue";
+                break;
+            case 0xFC: // ü
+                result += "ue";
+                break;
+            case 0xDF: // ß
+                result += "ss";
+                break;
+            default:
+                if (c < 0x80) { // ASCII-Zeichen
+                    result += (char)c;
+                } else {
+                    result += '_'; // Ersetze unbekannte UTF-8 Zeichen
+                }
+        }
+    }
+    return result;
+}
+

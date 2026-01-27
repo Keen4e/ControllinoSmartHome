@@ -9,8 +9,9 @@ struct DigitalOutput {
     const char* mqtt_topic;
     const char* mqtt_device;
     bool initial_state;
-    const char* exclusive_ports[2]; // Maximale Größe 2 für Kompatibilität
-    uint8_t exclusive_ports_count;
+    const char* outputs[5];
+    uint8_t outputs_count;
+    const char* device_class;  // Neuer Parameter: "light" oder "switch"
 };
 
 const DigitalOutput DIGITAL_OUTPUTS[] = {
@@ -21,7 +22,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Schrank",
         false,
         {nullptr},
-        0
+        0,
+        "light"  // Neuer Parameter
     },
     {
         "CONTROLLINO_D1",
@@ -30,16 +32,18 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Schrank",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D2",
-        "Schrank Fussbodenheizung",
+        "Schrank Bodenheizung",
         "C1/C1_D2",
         "C1_Schrank",
         false,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D3",
@@ -48,7 +52,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Schlafzimmer",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D4",
@@ -57,7 +62,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Schlafzimmer",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D5",
@@ -66,16 +72,18 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Schlafzimmer",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D6",
-        "Schlafzimmer Fussbodenheizung",
+        "Schlafzimmer Bodenheizung",
         "C1/C1_D6",
         "C1_Schlafzimmer",
         false,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D7",
@@ -83,8 +91,9 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1/C1_D7",
         "C1_Buero",
         false,
-        {nullptr},
-        0
+        {"CONTROLLINO_D8"},
+        1,
+        "switch"
     },
     {
         "CONTROLLINO_D8",
@@ -92,8 +101,9 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1/C1_D8",
         "C1_Buero",
         false,
-        {nullptr},
-        0
+        {"CONTROLLINO_D7"},
+        1,
+        "switch"
     },
     {
         "CONTROLLINO_D9",
@@ -101,8 +111,9 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1/C1_D9",
         "C1_Schlafzimmer",
         false,
-        {nullptr},
-        0
+        {"CONTROLLINO_D10"},
+        1,
+        "switch"
     },
     {
         "CONTROLLINO_D10",
@@ -110,8 +121,9 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1/C1_D10",
         "C1_Schlafzimmer",
         false,
-        {nullptr},
-        0
+        {"CONTROLLINO_D9"},
+        1,
+        "switch"
     },
     {
         "CONTROLLINO_D11",
@@ -120,7 +132,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Buero",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D12",
@@ -129,7 +142,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Buero",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D13",
@@ -138,16 +152,18 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Buero",
         false,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D14",
-        "Buero Fussbodenheizung",
+        "Buero Bodenheizung",
         "C1/C1_D14",
         "C1_Buero",
         false,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D15",
@@ -156,7 +172,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Buero",
         true,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D16",
@@ -165,7 +182,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Buero",
         false,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D17",
@@ -173,17 +191,19 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1/C1_D17",
         "C1_Schlafzimmer",
         false,
-        {nullptr},
-        0
+        {"CONTROLLINO_D18"},
+        1,
+        "switch"
     },
     {
         "CONTROLLINO_D18",
-        "Schlafzimmer Rolle hoch",
+        "Schlafzimmer Rollo hoch",
         "C1/C1_D18",
         "C1_Schlafzimmer",
         false,
-        {nullptr},
-        0
+        {"CONTROLLINO_D17"},
+        1,
+        "switch"
     },
     {
         "CONTROLLINO_D19",
@@ -192,7 +212,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Bad",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D21",
@@ -201,16 +222,18 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Bad",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D23",
-        "Bad Fussbodenheizung",
+        "Bad Bodenheizung",
         "C1/C1_D23",
         "C1_Bad",
         false,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_R1",
@@ -219,7 +242,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Schrank",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_R3",
@@ -228,16 +252,18 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Bad",
         false,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_R5",
         "Schrank Pumpe",
         "C1/C1_R5",
         "C1_Schrank",
-        false,
+        true,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_R8",
@@ -246,16 +272,18 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_R9",
-        "Flur Fussbodenheizung",
+        "Flur Bodenheizung",
         "C1/C1_R9",
         "C1_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_R11",
@@ -264,7 +292,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Flur",
         false,
         {nullptr},
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_R12",
@@ -273,7 +302,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Bad",
         true,
         {nullptr},
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_R14",
@@ -282,16 +312,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C1_Schlafzimmer",
         true,
         {nullptr},
-        0
-    },
-    {
-        "CONTROLLINO_R15",
-        "Schrank Raumstrom",
-        "C1/C1_R15",
-        "C1_Schrank",
-        true,
-        {nullptr},
-        0
+        0,
+        "switch"
     }
 };
 
