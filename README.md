@@ -1,5 +1,14 @@
 # ControllinoSmartHome
 
+SORRY - THIS DOCU IS OUTDATED - WILL BE UPDATED WHEN TIME PERMITS.....
+
+
+
+
+
+
+
+
 This is the initial upload of my Controllino programming to implement my smarthome. 
 
 I use 2 controllinos - hence there are 2 files. They contain the same logic with different configurations. 
