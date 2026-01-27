@@ -9,175 +9,213 @@ struct DigitalOutput {
     const char* mqtt_topic;
     const char* mqtt_device;
     bool initial_state;
-    const char* exclusive_ports[2]; // Maximale Größe 2 für Kompatibilität
-    uint8_t exclusive_ports_count;
+    const char* outputs[5];
+    uint8_t outputs_count;
+    const char* device_class;  // Neuer Parameter: "light" oder "switch"
 };
 
 const DigitalOutput DIGITAL_OUTPUTS[] = {
     {
         "CONTROLLINO_D0", 
         "LED TV", 
-        "C4/C4_D0", 
-        "C4_Media", 
+        "C3/C3_D0", 
+        "C3_Media", 
         false, 
         {nullptr}, 
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D1", 
         "Fernseher", 
-        "C4/C4_D1", 
-        "C4_Media", 
+        "C3/C3_D1", 
+        "C3_Media", 
         true, 
         {nullptr}, 
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D2", 
         "Router Server Uhr", 
-        "C4/C4_D2", 
-        "C4_Media", 
+        "C3/C3_D2", 
+        "C3_Media", 
         true, 
         {nullptr}, 
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D3", 
         "Stereo Anlage", 
-        "C4/C4_D3", 
-        "C4_Media", 
+        "C3/C3_D3", 
+        "C3_Media", 
         false, 
         {nullptr}, 
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D6", 
         "Tuer Rolladen hoch", 
-        "C4/C4_D6", 
-        "C4_Wohnzimmer", 
+        "C3/C3_D6", 
+        "C3_Wohnzimmer", 
         false, 
         {"CONTROLLINO_D7"}, 
-        1
+        1,
+        "switch"
     },
     {
         "CONTROLLINO_D7", 
         "Tuer Rolladen runter", 
-        "C4/C4_D7", 
-        "C4_Wohnzimmer", 
+        "C3/C3_D7", 
+        "C3_Wohnzimmer", 
         false, 
         {"CONTROLLINO_D6"}, 
-        1
+        1,
+        "switch"
     },
     {
         "CONTROLLINO_D8", 
         "Raumstrom Wohnzimmer", 
-        "C4/C4_D8", 
-        "C4_Wohnzimmer", 
+        "C3/C3_D8", 
+        "C3_Wohnzimmer", 
         true, 
         {nullptr}, 
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D9", 
         "Raumstrom Esszimmer", 
-        "C4/C4_D9", 
-        "C4_Esszimmer", 
+        "C3/C3_D9", 
+        "C3_Esszimmer", 
         true, 
         {nullptr}, 
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D11", 
         "Steckdose Kommode", 
-        "C4/C4_D11", 
-        "C4_Esszimmer", 
+        "C3/C3_D11", 
+        "C3_Esszimmer", 
         true, 
         {nullptr}, 
-        0
+         0,
+        "switch"
     },
     {
         "CONTROLLINO_D13", 
         "Steckdose Tisch", 
-        "C4/C4_D13", 
-        "C4_Esszimmer", 
+        "C3/C3_D13", 
+        "C3_Esszimmer", 
         true, 
         {nullptr}, 
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D14", 
         "LED Kommode", 
-        "C4/C4_D14", 
-        "C4_Esszimmer", 
+        "C3/C3_D14", 
+        "C3_Esszimmer", 
         false, 
         {nullptr}, 
-        0
-    },
+        0,
+        "light"
+    },                                                      
     {
         "CONTROLLINO_D15", 
         "Steckdose Fenster", 
-        "C4/C4_D15", 
-        "C4_Esszimmer", 
+        "C3/C3_D15", 
+        "C3_Esszimmer", 
         true, 
         {nullptr}, 
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_D16", 
         "Fenster Seite Rolladen hoch", 
-        "C4/C4_D16", 
-        "C4_Esszimmer", 
+        "C3/C3_D16", 
+        "C3_Esszimmer", 
         false, 
         {"CONTROLLINO_D17"}, 
-        1
+        1,
+        "switch"
     },
     {
         "CONTROLLINO_D17", 
         "Fenster Seite Rolladen runter", 
-        "C4/C4_D17", 
-        "C4_Esszimmer", 
+        "C3/C3_D17", 
+        "C3_Esszimmer", 
         false, 
         {"CONTROLLINO_D16"}, 
-        1
+        1,
+        "switch"
     },
     {
         "CONTROLLINO_D18", 
         "Aussen Garage/Grill", 
-        "C4/C4_D18", 
-        "C4_Out", 
+        "C3/C3_D18", 
+        "C3_Out", 
         true, 
         {nullptr}, 
-        0
+        0,
+        "switch"
     },
     
     {
         "CONTROLLINO_D19", 
         "Verteiler Shelly", 
-        "C4/C4_D19", 
-        "C4_Wohnzimmer", 
+        "C3/C3_D19", 
+        "C3_Wohnzimmer", 
         true, 
         {nullptr}, 
-        0
+           0,
+        "switch"
     },
         {
         "CONTROLLINO_D20", 
         "Licht Aussen Rechts", 
-        "C4/C4_D20", 
-        "C4_Out", 
+        "C3/C3_D20", 
+        "C3_Out", 
         false, 
         {nullptr}, 
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_D21", 
         "Licht Aussen Rechts", 
-        "C4/C4_D21", 
-        "C4_Out", 
+        "C3/C3_D21", 
+        "C3_Out", 
         false, 
         {nullptr}, 
-        0
+        0,
+        "light"
     },
-    
+        {
+        "CONTROLLINO_D22", 
+        "LED Schuhschrank", 
+        "C3/C3_D22", 
+        "C2_Flur", 
+        false, 
+        {nullptr}, 
+        0,
+        "light"
+    },
+            {
+        "CONTROLLINO_D23", 
+        "LED Kommode Esszimmer", 
+        "C3/C3_D23", 
+        "C3_Esszimmer", 
+        false, 
+        {nullptr}, 
+        0,
+        "light"
+    },
     // Neue Einträge für C3-Relais
     {
         "CONTROLLINO_R0", 
@@ -186,7 +224,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C3_Media", 
         true, 
         {nullptr}, 
-        0
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_R1", 
@@ -195,7 +234,18 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C3_Media", 
         true, 
         {nullptr}, 
-        0
+          0,
+        "switch"
+    },
+     {
+        "CONTROLLINO_R4", 
+        "LED Netzteil", 
+        "C3/C3_R4", 
+        "C3_Esszimmer", 
+        true, 
+        {nullptr}, 
+        0,
+        "switch"
     },
     {
         "CONTROLLINO_R5", 
@@ -204,7 +254,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C3_Wohnzimmer", 
         false, 
         {nullptr}, 
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_R6", 
@@ -213,7 +264,8 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C3_Esszimmer", 
         false, 
         {nullptr}, 
-        0
+        0,
+        "light"
     },
         {
         "CONTROLLINO_R8", 
@@ -222,16 +274,18 @@ const DigitalOutput DIGITAL_OUTPUTS[] = {
         "C3_Out", 
         false, 
         {nullptr}, 
-        0
+        0,
+        "light"
     },
     {
         "CONTROLLINO_R7", 
-        "Aussen tbd", 
+        "Aussen Lichterkette", 
         "C3/C3_R7", 
         "C3_Out", 
         false, 
         {nullptr}, 
-        0
+        0,
+        "light"
     }
 };
 
