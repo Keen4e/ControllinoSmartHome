@@ -1,19 +1,8 @@
 # ControllinoSmartHome
-
-SORRY - THIS DOCU IS OUTDATED - WILL BE UPDATED WHEN TIME PERMITS.....
-
-
-
-
-
-
-
-
-This is the initial upload of my Controllino programming to implement my smarthome. 
-
-I use 2 controllinos - hence there are 2 files. They contain the same logic with different configurations. 
-
-There is still a lot of quick and dirty in it - but so far it works ;) Cleanup is planned once time permits
+This is the further enhanced version of my Controllino programming to implement my smarthome. 
+The code runns stable in my home now since a year and I consider it as final. 
+I offer professional sevices on this project (+the installation/configuration services arround it via a small startup (www.immo-vernetzer.de)
+I use 3 controllinos - hence there are 3 folders. They contain the same logic (1,2,3.ino) with different configurations. 
 
 # Introduction:
 This project covers the following functions:
@@ -26,48 +15,63 @@ This project covers the following functions:
 # Details and configuration:
 ## File structure
 Each Controllino uses 3 files: 
-- Controllino_x_floor.ino (Contains the parameters)
-- shutter_functions.ino (generic functions for the roller shutter - typically no need to change anything here)
-- generic_functions.ino (all other functions- typically no need to change anything here)
+- x.ino (Contains the logic - typically no need for any changes)
+- config.hpp (General paramenters like MQTT)
+- analog_inputs.hpp (Configuration of the input ports)
+- digital_outputs.hpp (Configuration of the output ports) 
 
 ## Configuration
-The file Controllino_x_floor.ino needs to be set to the respective environment
+The file config.hpp needs to be set to the respective environment (Should be rather self explaining)
 ```
-const char* clientId = "Controllino1";  //mqtt client name
-const char* reference = "C1";           // Dynamic reference, e.g., "C1" or "C2"
-byte mac[] = { 0xDE, 0xEF, 0xED, 0xEF, 0xFE, 0xEF };  // MAC address for the Ethernet shield
-IPAddress server(192, 168, 178, 42);                  // IP address of the MQTT broker
+const SystemConfig SYSTEM_CONFIG = {
+    // Network Configuration
+    {
+        "DE:AD:EB:FE:EF:ED",   // MAC Address
+        "192.168.178.111",     // IP Address
+        "255.255.255.0",       // Subnet Mask
+        "192.168.1.1",         // Gateway
+        "192.168.1.1"          // DNS Server
+    },
+    
+    // MQTT Configuration
+    {
+        "192.168.178.42",      // Broker
+        1883,                  // Port
+        "Controllino1",        // Client ID
+        "aha/C1",              // Base Topic
+        "cmd_t",               // Command Topic
+        "avt_t",               // Availability Topic
+        "stat_t"               // State Suffix
+    },
+    
+    // General Configuration
+    {
+        "C1",                  // Device Name
+        "oben"                // Location
+    }
+};
 ```
-This strcture takes care that the entities are setup in homeassistant accordingly: 
+The analog_inputs.hpp configures inputs like this
 ```
-const char* base_topic;                 // Base MQTT topic
-  int pin;                                // Pin number associated with the topic
-  void (*action)(int, int, const char*);  // Action to execute on state change
-  const char* name;                       // Display name for this mapping
-  const char* unique_id;                  // Unique identifier for MQTT discovery
-  const char* deviceIdentifier;           // Device identifier for MQTT
-  const char* deviceName;                 // Name of the device
-  bool defaultState;                      // Default state of the device (on/off)
+    {
+        "CONTROLLINO_A1", //Pin (needs to follow Controllino logic)
+        "A1 - Schrank Deckenlicht", //Name in Text
+        "C1/C1_A1", //Technical ID = MQTT Topic
+        "C1_Eingänge", // Device in Homeassistant
+        "power", //Device Class of home assistant
+        {{"CONTROLLINO_R1"}}, //Which output is toggled, multiple entries possible,
+        1 // how many outputs are toggelt (Function potentially to be removed) 
+    },
 ```
-Example:
+The digital_outputs.hpp configures outputs like this
 ```
-TopicActionMapping topicActions[] = {
-  { "aha/C1/C1_D0", CONTROLLINO_D0, digitalWriteAndPublish, "Schrank Licht rechte Seite", "C1/C1_D0", "C1_Schrank", "C1_Schrank", false },
-```
-In this function one maps the inputs (handled via the respective cases) to the outputs of the controllino
-```
-void readAnalogValues() {
-  for (int i = 0; i <= 15; i++) {
-    int buttonPin = CONTROLLINO_A0 + i;
-
-    // Analogen Status des aktuellen Pins prüfen und über MQTT senden
-    handleDigitalStatus(buttonPin, i);
-
-    // Schalt- und Statusmeldungen für bestimmte digitale Ausgänge senden
-    switch (i) {
-      case 0:
-        handleButtonPress(buttonPin, CONTROLLINO_D0, "aha/C1/C1_D0/stat_t");
-        break;
-      case 1:
-
-```
+    {
+        "CONTROLLINO_R8", //Pin (needs to follow Controllino logic)
+        "Flur Licht", //Name in Text
+        "C1/C1_R8", //Technical ID = MQTT Topic
+        "C1_Flur", // Device in Homeassistant
+        false, // Port is activated during startup of controllino (usefull for power outage)
+        {nullptr}, // Blocks corresponding roller shutter 
+        0, //how many to block
+        "light" //Device Class of home assistant
+    },```
